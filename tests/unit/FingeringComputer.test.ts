@@ -34,25 +34,41 @@ function getFingers(events: NoteEvent[]): (number | undefined)[] {
 }
 
 describe('FingeringComputer', () => {
-  it('assigns fingers to a simple ascending scale', () => {
+  it('C major ascending RH produces standard 1-2-3-1-2-3-4-5', () => {
     const fc = new FingeringComputer();
-    const events = singleNoteEvents([60, 62, 64, 65, 67, 69, 71, 72]); // C4 to C5
+    const events = singleNoteEvents([60, 62, 64, 65, 67, 69, 71, 72]);
     fc.compute(events, 'right');
-
-    const fingers = getFingers(events);
-    expect(fingers.every(f => f !== undefined)).toBe(true);
-    expect(fingers.every(f => f! >= 1 && f! <= 5)).toBe(true);
-    // Should have a thumb-under somewhere (finger 1 appearing after finger 3+)
-    expect(fingers).toHaveLength(8);
+    expect(getFingers(events)).toEqual([1, 2, 3, 1, 2, 3, 4, 5]);
   });
 
-  it('assigns fingers to a descending scale', () => {
+  it('C major descending RH produces standard 5-4-3-2-1-3-2-1', () => {
     const fc = new FingeringComputer();
     const events = singleNoteEvents([72, 71, 69, 67, 65, 64, 62, 60]);
     fc.compute(events, 'right');
+    expect(getFingers(events)).toEqual([5, 4, 3, 2, 1, 3, 2, 1]);
+  });
 
-    const fingers = getFingers(events);
-    expect(fingers.every(f => f !== undefined && f >= 1 && f <= 5)).toBe(true);
+  it('C major ascending LH produces standard 5-4-3-2-1-3-2-1', () => {
+    const fc = new FingeringComputer();
+    const events = singleNoteEvents([48, 50, 52, 53, 55, 57, 59, 60], 2);
+    fc.compute(events, 'left');
+    expect(getFingers(events)).toEqual([5, 4, 3, 2, 1, 3, 2, 1]);
+  });
+
+  it('5 ascending stepwise notes RH should be 1-2-3-4-5', () => {
+    const fc = new FingeringComputer();
+    const events = singleNoteEvents([60, 62, 64, 65, 67]);
+    fc.compute(events, 'right');
+    expect(getFingers(events)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('stepwise motion prefers adjacent fingers, no skipping', () => {
+    const fc = new FingeringComputer();
+    const events = singleNoteEvents([60, 62, 64]);
+    fc.compute(events, 'right');
+    const f = getFingers(events);
+    const hasSkip = f.some((finger, i) => i > 0 && Math.abs(finger - f[i-1]) > 1);
+    expect(hasSkip).toBe(false);
   });
 
   it('handles a single note', () => {
