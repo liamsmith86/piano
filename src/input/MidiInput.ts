@@ -119,6 +119,8 @@ export class MidiInput {
   }
 
   destroy(): void {
+    this.sustainedNotes.clear();
+    this.sustainPedalDown = false;
     for (const input of this.connectedInputs) {
       input.onmidimessage = null;
     }

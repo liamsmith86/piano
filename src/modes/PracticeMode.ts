@@ -65,8 +65,13 @@ export class PracticeMode {
       await this.audio.init();
     }
 
-    this.active = true;
     this.timeline = this.analyzer.getTimeline();
+    if (this.timeline.length === 0) {
+      console.warn('Cannot start practice: no notes in timeline');
+      return;
+    }
+
+    this.active = true;
     this.updateFilteredTimeline();
     this.cursorIndex = 0;
     this.hitNotes.clear();
@@ -174,7 +179,9 @@ export class PracticeMode {
       }
       // Song complete
       this.active = false;
+      this.clearAutoAdvanceTimer();
       this.inputManager.removeListener(this.inputHandler);
+      this.renderer.clearNoteHighlights();
       this.events.emit('songEnd', { stats: this.getState() });
       return;
     }
@@ -349,6 +356,7 @@ export class PracticeMode {
       // Mark as a wrong attempt (user didn't press in time)
       this.wrongCount++;
       this.streak = 0;
+      this.trackMeasureStat(false);
       // Advance cursor
       this.hitNotes.clear();
       this.advanceCursor();
@@ -382,6 +390,11 @@ export class PracticeMode {
     if (this.active) {
       this.updateFilteredTimeline();
       this.totalNotes = this.filteredTimeline.length;
+      // Reset stats when changing loop range
+      this.correctCount = 0;
+      this.wrongCount = 0;
+      this.measureStatsMap.clear();
+      this.streak = 0;
       this.cursorIndex = 0;
       this.hitNotes.clear();
       this.syncCursorToIndex();

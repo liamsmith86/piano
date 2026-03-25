@@ -36,7 +36,8 @@ export class PracticeComplete {
            <h3>Trouble spots</h3>
            <div class="pc-measure-list">
              ${troubleMeasures.map(m => {
-               const mAcc = Math.round((m.correct / (m.correct + m.wrong)) * 100);
+               const mTotal = m.correct + m.wrong;
+               const mAcc = mTotal > 0 ? Math.round((m.correct / mTotal) * 100) : 0;
                const color = mAcc >= 80 ? '#f59e0b' : '#ef4444';
                return `<div class="pc-measure-item">
                  <span class="pc-measure-num">M${m.measure}</span>

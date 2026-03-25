@@ -181,9 +181,9 @@ export class ScoreAnalyzer {
 
     const staffFilter = hand === 'right' ? 1 : 2;
     return this.timeline
-      .map((event, i) => ({
+      .map(event => ({
         ...event,
-        index: i,
+        // Preserve original index for cursor sync
         notes: event.notes.filter(n => n.staff === staffFilter),
       }))
       .filter(event => event.notes.length > 0);

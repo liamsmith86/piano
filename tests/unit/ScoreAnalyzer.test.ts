@@ -244,4 +244,29 @@ describe('ScoreAnalyzer', () => {
     expect(timeline[1].index).toBe(1);
     expect(timeline[2].index).toBe(2);
   });
+
+  it('filterByHand preserves original indices for cursor sync', () => {
+    // Events at indices 0 (staff 1), 1 (staff 2), 2 (staff 1), 3 (staff 2)
+    const osmd = createMockOSMD([
+      [{ midi: 60, staff: 1, beats: 1, measure: 0 }],
+      [{ midi: 40, staff: 2, beats: 1, measure: 0 }],
+      [{ midi: 64, staff: 1, beats: 1, measure: 0 }],
+      [{ midi: 44, staff: 2, beats: 1, measure: 0 }],
+    ]);
+
+    const analyzer = new ScoreAnalyzer();
+    analyzer.analyze(osmd);
+
+    const rightHand = analyzer.filterByHand('right');
+    expect(rightHand).toHaveLength(2);
+    // Original indices 0 and 2 (the staff-1 events)
+    expect(rightHand[0].index).toBe(0);
+    expect(rightHand[1].index).toBe(2);
+
+    const leftHand = analyzer.filterByHand('left');
+    expect(leftHand).toHaveLength(2);
+    // Original indices 1 and 3 (the staff-2 events)
+    expect(leftHand[0].index).toBe(1);
+    expect(leftHand[1].index).toBe(3);
+  });
 });
