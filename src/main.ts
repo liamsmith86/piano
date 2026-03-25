@@ -172,8 +172,20 @@ async function main(): Promise<void> {
   app.on('loaded', () => {
     scoreContainer.style.display = 'block';
     libraryContainer.style.display = 'none';
+    // Push browser history so back button returns to library
+    history.pushState({ view: 'score' }, '');
     // Re-render overlays for newly loaded song
     applySettings(settingsPanel.getSettings());
+  });
+
+  // Browser back button: return to library from score view
+  window.addEventListener('popstate', () => {
+    if (!library.isVisible() && app.getLoadedSong()) {
+      app.stop();
+      app.stopPractice();
+      library.show();
+      scoreContainer.style.display = 'none';
+    }
   });
 
   app.on('zoomed', () => {

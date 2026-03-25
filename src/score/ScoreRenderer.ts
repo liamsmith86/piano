@@ -64,21 +64,12 @@ export class ScoreRenderer {
     if (typeof source === 'string') {
       await this.osmd.load(source);
     } else {
-      // ArrayBuffer from file upload
+      // ArrayBuffer from file upload — pass as Blob (OSMD accepts Blob natively)
       const header = new Uint8Array(source.slice(0, 4));
-      if (header[0] === 0x50 && header[1] === 0x4B) {
-        // MXL (ZIP) file — pass as base64
-        const bytes = new Uint8Array(source);
-        let binary = '';
-        bytes.forEach(b => binary += String.fromCharCode(b));
-        const base64 = btoa(binary);
-        const mxlDataUrl = `data:application/vnd.recordare.musicxml+xml;base64,${base64}`;
-        await this.osmd.load(mxlDataUrl);
-      } else {
-        // Plain XML
-        const xml = new TextDecoder('utf-8').decode(source);
-        await this.osmd.load(xml);
-      }
+      const isMxl = header[0] === 0x50 && header[1] === 0x4B; // PK = ZIP/MXL
+      const mimeType = isMxl ? 'application/vnd.recordare.musicxml+xml' : 'application/xml';
+      const blob = new Blob([source], { type: mimeType });
+      await this.osmd.load(blob);
     }
 
     this.osmd.zoom = this._zoom;
