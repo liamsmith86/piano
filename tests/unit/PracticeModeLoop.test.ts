@@ -23,6 +23,7 @@ function createMockRenderer() {
     getCursorXPosition: vi.fn().mockReturnValue(100),
     getStaffYPosition: vi.fn().mockReturnValue(50),
     showWrongNote: vi.fn(),
+    showWrongNoteAtCursor: vi.fn(),
     highlightCurrentNotes: vi.fn(),
     markNotesPlayed: vi.fn(),
     clearNoteHighlights: vi.fn(),

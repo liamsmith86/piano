@@ -23,6 +23,7 @@ function createMockRenderer() {
     getCursorXPosition: vi.fn().mockReturnValue(100),
     getStaffYPosition: vi.fn().mockReturnValue(50),
     showWrongNote: vi.fn(),
+    showWrongNoteAtCursor: vi.fn(),
     highlightCurrentNotes: vi.fn(),
     markNotesPlayed: vi.fn(),
     clearNoteHighlights: vi.fn(),
@@ -289,7 +290,7 @@ describe('PracticeMode - wrong note marker', () => {
     await pm.start();
     im.simulateNoteOn(62); // wrong note D4
 
-    expect(renderer.showWrongNote).toHaveBeenCalledWith(100, 50, 'D4');
+    expect(renderer.showWrongNoteAtCursor).toHaveBeenCalledWith(62, 'D4');
   });
 });
 

@@ -283,14 +283,8 @@ export class PracticeMode {
   }
 
   private showWrongNoteOnStaff(wrongMidi: number): void {
-    // Determine staff: in both-hands mode, use middle C (60) as the divider
-    const staff: 1 | 2 = this.hand === 'left' ? 2 : this.hand === 'right' ? 1 : (wrongMidi >= 60 ? 1 : 2);
-    const x = this.renderer.getCursorXPosition();
-    const y = this.renderer.getStaffYPosition(staff as 1 | 2, wrongMidi);
-    if (x > 0 && y > 0) {
-      const wrongName = midiToNoteName(wrongMidi);
-      this.renderer.showWrongNote(x, y, wrongName);
-    }
+    const wrongName = midiToNoteName(wrongMidi);
+    this.renderer.showWrongNoteAtCursor(wrongMidi, wrongName);
   }
 
   private playAccompaniment(fromIndex: number): void {

@@ -23,6 +23,7 @@ function createMockRenderer() {
     getCursorXPosition: vi.fn().mockReturnValue(100),
     getStaffYPosition: vi.fn().mockReturnValue(50),
     showWrongNote: vi.fn(),
+    showWrongNoteAtCursor: vi.fn(),
     highlightCurrentNotes: vi.fn(),
     markNotesPlayed: vi.fn(),
     clearNoteHighlights: vi.fn(),
@@ -145,7 +146,7 @@ describe('PracticeMode', () => {
     });
     expect(pm.getCursorIndex()).toBe(0); // didn't advance
     expect(keyboard.markWrong).toHaveBeenCalledWith(62);
-    expect(renderer.showWrongNote).toHaveBeenCalled();
+    expect(renderer.showWrongNoteAtCursor).toHaveBeenCalled();
   });
 
   it('handles chords: waits for all notes before advancing', async () => {

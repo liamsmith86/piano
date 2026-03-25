@@ -8,7 +8,7 @@ export class ScoreRenderer {
   private cursor: Cursor | null = null;
   private container: HTMLElement;
   private currentHand: HandSelection = 'both';
-  private wrongNoteOverlay: SVGSVGElement | null = null;
+  private wrongNoteOverlay: SVGGElement | null = null;
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private overlay: ScoreOverlay;
 
@@ -96,21 +96,10 @@ export class ScoreRenderer {
   }
 
   private setupWrongNoteOverlay(): void {
+    // Overlay <g> is now created on-demand in showWrongNoteAtCursor
+    // to ensure it's in the correct SVG page for multi-page scores
     this.wrongNoteOverlay?.remove();
-
-    const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    overlay.setAttribute('class', 'wrong-note-overlay');
-    overlay.style.position = 'absolute';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.pointerEvents = 'none';
-    overlay.style.overflow = 'visible';
-
-    this.container.style.position = 'relative';
-    this.container.appendChild(overlay);
-    this.wrongNoteOverlay = overlay;
+    this.wrongNoteOverlay = null;
   }
 
   applyHandColoring(): void {
@@ -345,6 +334,98 @@ export class ScoreRenderer {
 
   private currentWrongMarker: SVGGElement | null = null;
   private wrongMarkerTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Show wrong note marker at the position of the closest expected note under the cursor.
+   * Uses actual graphical note positions from OSMD rather than hardcoded math.
+   */
+  // Chromatic MIDI pitch → diatonic step (C=0, D=1, E=2, F=3, G=4, A=5, B=6)
+  private static readonly CHROMATIC_TO_DIATONIC = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+
+  private midiToDiatonic(midi: number): number {
+    const octave = Math.floor(midi / 12);
+    return octave * 7 + ScoreRenderer.CHROMATIC_TO_DIATONIC[midi % 12];
+  }
+
+  showWrongNoteAtCursor(wrongMidi: number, wrongNoteName?: string): void {
+    if (!this.cursor) return;
+
+    const gnotes = (this.cursor as any).GNotesUnderCursor?.();
+    if (!gnotes || gnotes.length === 0) return;
+
+    // Find the closest graphical note by MIDI distance
+    let closestGN: any = null;
+    let closestDist = Infinity;
+    let closestMidi = 0;
+
+    for (const gn of gnotes) {
+      try {
+        const halfTone = gn.sourceNote?.halfTone;
+        if (halfTone == null || gn.sourceNote?.isRest?.()) continue;
+        const midi = halfTone + 12;
+        const dist = Math.abs(midi - wrongMidi);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestGN = gn;
+          closestMidi = midi;
+        }
+      } catch {}
+    }
+
+    // Fallback to first non-rest note
+    if (!closestGN) {
+      for (const gn of gnotes) {
+        if (!gn.sourceNote?.isRest?.()) { closestGN = gn; break; }
+      }
+    }
+    if (!closestGN) return;
+
+    // Get position from the notehead SVG in OSMD's coordinate space
+    let nhBox: { x: number; y: number; width: number; height: number } | null = null;
+    let noteSvgEl: SVGElement | null = null;
+    try {
+      const noteheadSvgs = closestGN.getNoteheadSVGs?.();
+      if (noteheadSvgs?.length > 0) {
+        noteSvgEl = noteheadSvgs[0];
+        const b = (noteSvgEl as any).getBBox?.();
+        if (b && b.width > 0) nhBox = b;
+      }
+      if (!nhBox) {
+        noteSvgEl = closestGN.getSVGGElement?.() ?? null;
+        if (noteSvgEl) {
+          const b = (noteSvgEl as any).getBBox?.();
+          if (b && b.width > 0) nhBox = b;
+        }
+      }
+    } catch {}
+    if (!nhBox || !noteSvgEl) return;
+
+    // Ensure overlay <g> is in the same SVG page as the target note
+    const parentSvg = noteSvgEl.closest('svg');
+    if (!parentSvg) return;
+
+    if (!this.wrongNoteOverlay || this.wrongNoteOverlay.closest('svg') !== parentSvg) {
+      this.wrongNoteOverlay?.remove();
+      const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlay.setAttribute('class', 'wrong-note-overlay');
+      overlay.style.pointerEvents = 'none';
+      parentSvg.appendChild(overlay);
+      this.wrongNoteOverlay = overlay;
+    }
+
+    // Calculate vertical offset: each diatonic step = half a staff line spacing.
+    // In OSMD SVG, staff line spacing ≈ 10 units and nhBox.height ≈ 10 units (notehead
+    // height matches the staff line spacing). Each diatonic step = nhBox.height / 2.
+    // Higher notes = lower Y in SVG, so offset is negative for higher wrong notes.
+    const diatonicDiff = this.midiToDiatonic(wrongMidi) - this.midiToDiatonic(closestMidi);
+    const stepHeight = nhBox.height / 2;
+    const yOffset = -diatonicDiff * stepHeight;
+
+    const x = nhBox.x + nhBox.width / 2;
+    const y = nhBox.y + nhBox.height / 2 + yOffset;
+
+    this.showWrongNote(x, y, wrongNoteName);
+  }
 
   showWrongNote(x: number, y: number, wrongNoteName?: string): void {
     if (!this.wrongNoteOverlay) return;
