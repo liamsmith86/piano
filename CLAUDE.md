@@ -99,8 +99,22 @@ Use semantic commit messages:
 - `docs:` documentation
 - `chore:` tooling, deps, config
 
+## Security Notes
+- Song titles sanitized with escapeHtml() before innerHTML insertion
+- No eval/Function constructors used anywhere
+- localStorage/IndexedDB contain only practice stats and uploaded songs
+- Salamander piano samples loaded over HTTPS from tonejs.github.io CDN
+- All setTimeout IDs tracked and cleared on destroy to prevent memory leaks
+- OSMD is AGPL-3.0 — see LICENSE file for compliance notes
+
 ## Browser Support
 - Chrome/Edge/Firefox: full support (Web MIDI + Web Audio)
 - Safari: no MIDI keyboard (Web MIDI API unsupported), audio works
 - iPad: responsive layout with safe area insets
 - iPhone: compact toolbar, hidden labels on small screens
+
+## Known Limitations
+- OSMD `sheet` property is protected — accessed via `(osmd as any).sheet`
+- Bundle is ~382KB gzipped (OSMD + Tone.js are large)
+- Salamander samples require internet on first load (~100MB, cached by browser)
+- Repeat barlines handled via cumulative beat offset (fixed in ae333d3)
