@@ -116,13 +116,43 @@ export class ScoreRenderer {
 
   // --- Note coloring for practice/play mode ---
 
-  private coloredElements: { el: SVGElement; origFill: string | null; origStroke: string | null }[] = [];
+  // Elements currently highlighted (blue) at the cursor — will be restored on next advance
+  private currentHighlight: { el: SVGElement; origFill: string | null; origStroke: string | null }[] = [];
+  // Elements permanently marked as played (green) — persist until clearNoteHighlights
+  private playedElements = new Set<SVGElement>();
+
+  private colorSvgElements(svgEl: SVGGElement, color: string): SVGElement[] {
+    const colored: SVGElement[] = [];
+    svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
+      const svgPath = el as SVGElement;
+      const fill = svgPath.getAttribute('fill');
+      const stroke = svgPath.getAttribute('stroke');
+      if (fill && fill !== 'none') svgPath.setAttribute('fill', color);
+      if (stroke && stroke !== 'none') svgPath.setAttribute('stroke', color);
+      colored.push(svgPath);
+    });
+    return colored;
+  }
 
   /** Color the noteheads at the current cursor position */
   highlightCurrentNotes(color: string): void {
-    this.clearNoteHighlights();
-    if (!this.cursor) return;
+    // Restore previous highlight to original (or green if played)
+    for (const { el, origFill, origStroke } of this.currentHighlight) {
+      if (this.playedElements.has(el)) {
+        // This element was marked played — keep it green
+        if (origFill !== null) el.setAttribute('fill', '#22c55e');
+        if (origStroke !== null) el.setAttribute('stroke', '#22c55e');
+      } else {
+        // Restore original color
+        if (origFill === null) el.removeAttribute('fill');
+        else el.setAttribute('fill', origFill);
+        if (origStroke === null) el.removeAttribute('stroke');
+        else el.setAttribute('stroke', origStroke);
+      }
+    }
+    this.currentHighlight = [];
 
+    if (!this.cursor) return;
     const gnotes = (this.cursor as any).GNotesUnderCursor?.();
     if (!gnotes) return;
 
@@ -132,18 +162,13 @@ export class ScoreRenderer {
         if (svgEl) {
           svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
             const svgPath = el as SVGElement;
-            this.coloredElements.push({
+            this.currentHighlight.push({
               el: svgPath,
               origFill: svgPath.getAttribute('fill'),
               origStroke: svgPath.getAttribute('stroke'),
             });
-            if (svgPath.getAttribute('fill') && svgPath.getAttribute('fill') !== 'none') {
-              svgPath.setAttribute('fill', color);
-            }
-            if (svgPath.getAttribute('stroke') && svgPath.getAttribute('stroke') !== 'none') {
-              svgPath.setAttribute('stroke', color);
-            }
           });
+          this.colorSvgElements(svgEl, color);
         }
       } catch {}
     }
@@ -152,33 +177,18 @@ export class ScoreRenderer {
   /** Mark notes at the current position as played (green) */
   markNotesPlayed(): void {
     if (!this.cursor) return;
-
     const gnotes = (this.cursor as any).GNotesUnderCursor?.();
     if (!gnotes) return;
-
-    // Collect elements we're marking green so we can remove them from coloredElements
-    const markedElements = new Set<SVGElement>();
 
     for (const gn of gnotes) {
       try {
         const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
         if (svgEl) {
-          svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
-            const svgPath = el as SVGElement;
-            if (svgPath.getAttribute('fill') && svgPath.getAttribute('fill') !== 'none') {
-              svgPath.setAttribute('fill', '#22c55e');
-            }
-            if (svgPath.getAttribute('stroke') && svgPath.getAttribute('stroke') !== 'none') {
-              svgPath.setAttribute('stroke', '#22c55e');
-            }
-            markedElements.add(svgPath);
-          });
+          const elements = this.colorSvgElements(svgEl, '#22c55e');
+          for (const el of elements) this.playedElements.add(el);
         }
       } catch {}
     }
-
-    // Remove from coloredElements so clearNoteHighlights won't revert the green
-    this.coloredElements = this.coloredElements.filter(({ el }) => !markedElements.has(el));
   }
 
   /** Scroll the container to keep the cursor element visible */
@@ -203,15 +213,20 @@ export class ScoreRenderer {
     }
   }
 
-  /** Clear note color highlights (restore original colors) */
+  /** Clear all note coloring (restore originals, remove played markers) */
   clearNoteHighlights(): void {
-    for (const { el, origFill, origStroke } of this.coloredElements) {
+    // Restore current blue highlight
+    for (const { el, origFill, origStroke } of this.currentHighlight) {
       if (origFill === null) el.removeAttribute('fill');
       else el.setAttribute('fill', origFill);
       if (origStroke === null) el.removeAttribute('stroke');
       else el.setAttribute('stroke', origStroke);
     }
-    this.coloredElements = [];
+    this.currentHighlight = [];
+    // Note: we don't restore played (green) elements here — they persist
+    // until the score is reloaded. This is intentional so users can see
+    // what they've played through. They get cleared on song reload via destroy().
+    this.playedElements.clear();
   }
 
   setHand(hand: HandSelection): void {
