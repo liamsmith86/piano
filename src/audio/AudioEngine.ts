@@ -18,7 +18,11 @@ export class AudioEngine {
   async init(): Promise<void> {
     if (this.isReady) return;
     if (this.initPromise) return this.initPromise;
-    this.initPromise = this.doInit();
+    this.initPromise = this.doInit().catch((err) => {
+      // Reset so next call can retry
+      this.initPromise = null;
+      throw err;
+    });
     return this.initPromise;
   }
 

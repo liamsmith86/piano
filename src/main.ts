@@ -59,9 +59,16 @@ async function main(): Promise<void> {
   });
 
   // Wrap play/practice start with count-in
+  const ensureAudio = async () => {
+    if (!app.audio.ready) {
+      await app.init();
+    }
+  };
+
   const playWithCountIn = async () => {
     if (!app.getLoadedSong()) return;
     try {
+      await ensureAudio();
       const settings = settingsPanel.getSettings();
       if (app.audio.ready && settings.countIn) {
         await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
@@ -77,6 +84,7 @@ async function main(): Promise<void> {
   const practiceWithCountIn = async () => {
     if (!app.getLoadedSong()) return;
     try {
+      await ensureAudio();
       const settings = settingsPanel.getSettings();
       if (app.audio.ready && settings.countIn) {
         await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
