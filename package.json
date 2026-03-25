@@ -1,0 +1,30 @@
+{
+  "name": "piano",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/vite": "^4.2.2",
+    "jsdom": "^29.0.1",
+    "playwright": "^1.58.2",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.1"
+  },
+  "dependencies": {
+    "@tonejs/midi": "^2.0.28",
+    "opensheetmusicdisplay": "^1.9.7",
+    "tone": "^15.1.22"
+  }
+}
