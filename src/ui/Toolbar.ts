@@ -67,9 +67,9 @@ export class Toolbar {
         </div>
 
         <div class="tb-hands" role="group" aria-label="Hand selection">
+          <button class="tb-hand-btn" data-hand="left" aria-label="Left hand only" aria-pressed="false">L</button>
           <button class="tb-hand-btn active" data-hand="both" aria-label="Both hands" aria-pressed="true">Both</button>
           <button class="tb-hand-btn" data-hand="right" aria-label="Right hand only" aria-pressed="false">R</button>
-          <button class="tb-hand-btn" data-hand="left" aria-label="Left hand only" aria-pressed="false">L</button>
         </div>
 
         <div class="tb-accomp-row" style="display:none">
