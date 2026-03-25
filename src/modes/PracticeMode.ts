@@ -196,6 +196,7 @@ export class PracticeMode {
     this.syncCursorToIndex();
     this.updateExpectedNotes();
     this.highlightExpected();
+    this.renderer.scrollToCursor();
     this.startAutoAdvanceTimer();
 
     this.events.emit('cursorAdvanced', { from: prevIndex, to: this.cursorIndex });

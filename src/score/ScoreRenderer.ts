@@ -162,6 +162,28 @@ export class ScoreRenderer {
     }
   }
 
+  /** Scroll the container to keep the cursor element visible */
+  scrollToCursor(): void {
+    const cursorEl = this.cursor?.cursorElement;
+    if (!cursorEl) return;
+
+    const containerRect = this.container.getBoundingClientRect();
+    const cursorRect = cursorEl.getBoundingClientRect();
+
+    // Check if cursor is below the visible area
+    const cursorBottom = cursorRect.bottom - containerRect.top;
+    const visibleHeight = this.container.clientHeight;
+
+    if (cursorBottom > visibleHeight - 40 || cursorRect.top < containerRect.top + 20) {
+      // Scroll to center the cursor
+      const scrollTarget = this.container.scrollTop + cursorRect.top - containerRect.top - visibleHeight / 3;
+      this.container.scrollTo({
+        top: Math.max(0, scrollTarget),
+        behavior: 'smooth',
+      });
+    }
+  }
+
   /** Clear note color highlights (restore original colors) */
   clearNoteHighlights(): void {
     for (const { el, origFill, origStroke } of this.coloredElements) {

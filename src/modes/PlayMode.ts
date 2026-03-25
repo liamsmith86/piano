@@ -83,8 +83,9 @@ export class PlayMode {
       this.renderer.cursorNext();
       this.currentIndex++;
     }
-    // Highlight current notes (blue)
+    // Highlight current notes (blue) and scroll to keep visible
     this.renderer.highlightCurrentNotes('#3b82f6');
+    this.renderer.scrollToCursor();
     this.events.emit('cursorAdvanced', { from: this.currentIndex - 1, to: this.currentIndex });
   }
 
