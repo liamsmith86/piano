@@ -80,7 +80,6 @@ describe('PlayMode', () => {
     expect(pm.getState()).toBe('playing');
     expect(audio.schedulePlayback).toHaveBeenCalled();
     expect(audio.play).toHaveBeenCalled();
-    expect(renderer.cursorReset).toHaveBeenCalled();
     expect(renderer.cursorShow).toHaveBeenCalled();
   });
 

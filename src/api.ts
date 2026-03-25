@@ -306,10 +306,12 @@ export class PianoApp {
 
   setLoop(startMeasure: number, endMeasure: number): void {
     this.practiceMode.setLoop(startMeasure, endMeasure);
+    this.playMode.setLoop(startMeasure, endMeasure);
   }
 
   clearLoop(): void {
     this.practiceMode.clearLoop();
+    this.playMode.clearLoop();
   }
 
   getLoopRange(): { start: number; end: number } | null {

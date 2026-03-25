@@ -102,8 +102,10 @@ async function main(): Promise<void> {
 
   // Score interaction: click-to-jump and drag-to-select
   app.scoreInteraction.setOnJump((measure) => {
-    // Stop current playback/practice and jump to the clicked measure
+    // Stop current playback/practice, clear loop, and jump to clicked measure
     app.stop();
+    app.clearLoop();
+    app.scoreInteraction.clearSelection();
     app.renderer.setCursorToMeasure(measure);
     app.renderer.cursorShow();
   });

@@ -14,6 +14,8 @@ export class PlayMode {
   private timelinePosition = 0;   // position in timeline array (for progress)
   private timeline: NoteEvent[] = [];
   private hand: HandSelection = 'both';
+  private loopStart: number | null = null;
+  private loopEnd: number | null = null;
 
   constructor(
     audio: AudioEngine,
@@ -41,16 +43,34 @@ export class PlayMode {
       return;
     }
 
-    // Start fresh
-    this.renderer.cursorReset();
+    // Start fresh — filter timeline by loop range if set
+    let fullTimeline = this.analyzer.getTimeline();
+    if (this.loopStart !== null && this.loopEnd !== null) {
+      fullTimeline = fullTimeline.filter(
+        e => e.measureNumber >= this.loopStart! && e.measureNumber <= this.loopEnd!
+      );
+    }
+    this.timeline = fullTimeline;
+
+    // Position cursor at the start of the range
+    if (this.timeline.length > 0) {
+      this.renderer.setCursorToMeasure(this.timeline[0].measureNumber);
+    } else {
+      this.renderer.cursorReset();
+    }
     this.renderer.cursorShow();
-    this.currentIndex = 0;
+    this.currentIndex = this.timeline.length > 0 ? this.timeline[0].index : 0;
     this.timelinePosition = 0;
 
-    this.timeline = this.analyzer.getTimeline();
+    // Offset timestamps so playback starts at time 0
+    const startOffset = this.timeline.length > 0 ? this.timeline[0].timestamp : 0;
+    const offsetTimeline = this.timeline.map(e => ({
+      ...e,
+      timestamp: e.timestamp - startOffset,
+    }));
 
     this.audio.schedulePlayback(
-      this.timeline,
+      offsetTimeline,
       this.hand,
       (index) => this.onCursorAdvance(index),
       () => this.onComplete(),
@@ -120,6 +140,16 @@ export class PlayMode {
     if (this.state === 'playing') {
       this.stop();
     }
+  }
+
+  setLoop(startMeasure: number, endMeasure: number): void {
+    this.loopStart = startMeasure;
+    this.loopEnd = endMeasure;
+  }
+
+  clearLoop(): void {
+    this.loopStart = null;
+    this.loopEnd = null;
   }
 
   getState(): PlaybackState {
