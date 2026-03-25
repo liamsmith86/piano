@@ -18,11 +18,24 @@ export class ScoreAnalyzer {
     cursor.reset();
     let index = 0;
 
+    // Track cumulative time to handle repeats (where beat position jumps backwards)
+    let prevRawBeats = 0;
+    let cumulativeBeatsOffset = 0;
+
     while (!cursor.Iterator.EndReached) {
       const notes: NoteInfo[] = [];
       const iterator = cursor.Iterator;
-      const timestampBeats = iterator.currentTimeStamp.RealValue * 4; // convert from whole notes to quarter notes
+      const rawBeats = iterator.currentTimeStamp.RealValue * 4;
       const measureNumber = iterator.CurrentMeasureIndex + 1;
+
+      // Detect repeat jump: if raw beats go backwards, add the previous
+      // position to the cumulative offset so timestamps remain monotonic
+      if (rawBeats < prevRawBeats - 0.01) {
+        cumulativeBeatsOffset += prevRawBeats;
+      }
+      prevRawBeats = rawBeats;
+
+      const timestampBeats = rawBeats + cumulativeBeatsOffset;
       const timestamp = this.beatsToSeconds(timestampBeats);
 
       // Get current voice entries at this cursor position
