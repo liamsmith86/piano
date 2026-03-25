@@ -71,9 +71,11 @@ export class PianoApp {
   // --- Song Management ---
 
   async loadSong(urlOrFile: string | File): Promise<void> {
-    // Stop any active mode before loading new song
+    // Full state reset before loading new song
     this.playMode.stop();
     this.practiceMode.stop();
+    this.clearLoop();
+    this.scoreInteraction.clearSelection();
 
     if (typeof urlOrFile === 'string') {
       await this.renderer.load(urlOrFile);
@@ -148,6 +150,12 @@ export class PianoApp {
     // Check uploaded
     const data = await getUploadedSongData(id);
     if (data) {
+      // Reset state before loading
+      this.playMode.stop();
+      this.practiceMode.stop();
+      this.clearLoop();
+      this.scoreInteraction.clearSelection();
+
       await this.renderer.load(data);
       this.loadedSong = this.uploadedSongs.find(s => s.id === id) ?? null;
       const osmd = this.renderer.getOSMD();
