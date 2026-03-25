@@ -118,3 +118,11 @@ Use semantic commit messages:
 - Bundle is ~382KB gzipped (OSMD + Tone.js are large)
 - Salamander samples require internet on first load (~100MB, cached by browser)
 - Repeat barlines handled via cumulative beat offset (fixed in ae333d3)
+- Metronome uses setInterval (drifts slightly over long sessions)
+- Count-in uses setTimeout (may be uneven at very high tempos)
+
+## Testing
+- Run `bun run test` for 172 unit tests
+- Run `bun run test:e2e` for 86 E2E Playwright tests
+- Run `bun x vitest run --coverage` for coverage report (93.6% statements)
+- Deep audit script at `/tmp/deep_audit.ts` validates all 18 songs
