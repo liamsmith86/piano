@@ -20,7 +20,13 @@ export class MidiInput {
       this.midiAccess = await navigator.requestMIDIAccess();
       this.connectInputs();
 
-      this.midiAccess.onstatechange = () => {
+      this.midiAccess.onstatechange = (e: Event) => {
+        const evt = e as MIDIConnectionEvent;
+        const port = evt.port;
+        // On disconnect: release all sustained notes to prevent stuck notes
+        if (port?.type === 'input' && port.state === 'disconnected') {
+          this.releaseAllNotes();
+        }
         this.connectInputs();
       };
 
@@ -104,6 +110,19 @@ export class MidiInput {
         source: 'midi',
       });
     }
+  }
+
+  private releaseAllNotes(): void {
+    for (const note of this.sustainedNotes) {
+      this.inputManager.emit({
+        type: 'noteOff',
+        midiNumber: note,
+        velocity: 0,
+        source: 'midi',
+      });
+    }
+    this.sustainedNotes.clear();
+    this.sustainPedalDown = false;
   }
 
   setConnectionCallback(cb: (connected: boolean, name: string) => void): void {

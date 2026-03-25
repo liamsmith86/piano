@@ -26,9 +26,20 @@ export class AudioEngine {
     return this.initPromise;
   }
 
-  private async doInit(): Promise<void> {
-
+  /**
+   * Resume the AudioContext — must be called from a user gesture handler on iOS Safari.
+   * Safe to call multiple times; returns immediately if already running.
+   */
+  async unlockAudio(): Promise<void> {
     await Tone.start();
+    // Also explicitly resume context for iOS Safari edge cases
+    if (Tone.getContext().state !== 'running') {
+      await Tone.getContext().resume();
+    }
+  }
+
+  private async doInit(): Promise<void> {
+    await this.unlockAudio();
 
     // Use Salamander Grand Piano samples
     const baseUrl = 'https://tonejs.github.io/audio/salamander/';

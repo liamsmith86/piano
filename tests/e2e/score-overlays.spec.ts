@@ -21,6 +21,7 @@ test.describe('Note Names on Score', () => {
         showNoteNamesOnScore: true,
         showAllAccidentals: false,
         showFingering: false,
+        showChords: false,
       });
     });
 
@@ -40,6 +41,7 @@ test.describe('Note Names on Score', () => {
         showNoteNamesOnScore: true,
         showAllAccidentals: false,
         showFingering: false,
+        showChords: false,
       });
     });
     await page.evaluate(() => {
@@ -47,6 +49,7 @@ test.describe('Note Names on Score', () => {
         showNoteNamesOnScore: false,
         showAllAccidentals: false,
         showFingering: false,
+        showChords: false,
       });
     });
 
@@ -64,6 +67,7 @@ test.describe('Note Names on Score', () => {
         showNoteNamesOnScore: true,
         showAllAccidentals: false,
         showFingering: false,
+        showChords: false,
       });
     });
 
@@ -87,6 +91,7 @@ test.describe('Courtesy Accidentals', () => {
         showNoteNamesOnScore: false,
         showAllAccidentals: true,
         showFingering: false,
+        showChords: false,
       });
     });
 
@@ -108,6 +113,7 @@ test.describe('Fingering', () => {
         showNoteNamesOnScore: false,
         showAllAccidentals: false,
         showFingering: true,
+        showChords: false,
       });
     });
 
@@ -131,6 +137,7 @@ test.describe('Fingering', () => {
         showNoteNamesOnScore: false,
         showAllAccidentals: false,
         showFingering: true,
+        showChords: false,
       });
     });
 
@@ -200,6 +207,7 @@ test.describe('Overlay Interaction', () => {
         showNoteNamesOnScore: true,
         showAllAccidentals: true,
         showFingering: true,
+        showChords: false,
       });
     });
 

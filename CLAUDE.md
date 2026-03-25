@@ -39,11 +39,12 @@ src/
     ScoreRenderer.ts      # OSMD wrapper: load, render, cursor, note coloring
     ScoreAnalyzer.ts      # Extracts NoteEvent[] timeline from OSMD cursor
     ScoreInteraction.ts   # Click-to-jump, drag-to-select measure ranges
+    ScoreOverlay.ts       # Note names, accidentals, fingering, chord symbol overlays
   audio/
-    AudioEngine.ts        # Tone.js sampler, playback scheduling, metronome, count-in
+    AudioEngine.ts        # Tone.js sampler, playback scheduling, metronome, count-in, iOS unlock
   input/
     InputManager.ts       # Unified input event bus
-    MidiInput.ts          # Web MIDI API + sustain pedal (CC 64)
+    MidiInput.ts          # Web MIDI API + sustain pedal (CC 64) + auto-reconnect
     VirtualKeyboard.ts    # On-screen piano: auto-range, auto-scroll, highlights
     KeyboardInput.ts      # QWERTY → MIDI note mapping
   modes/
@@ -58,9 +59,13 @@ src/
     CountIn.ts            # Visual beat countdown overlay
     ShortcutsHelp.ts      # Keyboard shortcuts modal (? key)
 tests/
-  unit/                   # 179 tests across 14 files
-  e2e/                    # 115 tests across 11 files (includes full 18-song playthrough)
-public/songs/             # 18 preloaded MXL files
+  unit/                   # 198 tests across 14 files
+  e2e/                    # 438 tests across 17 files (includes full 18-song playthrough + visual regression)
+public/
+  songs/                  # 18 preloaded MXL files
+  manifest.webmanifest    # PWA web app manifest
+  sw.js                   # Service worker for offline support
+  icons/                  # SVG app icons (192, 512)
 ```
 
 ## Key Architecture Decisions
@@ -74,6 +79,10 @@ public/songs/             # 18 preloaded MXL files
 - **Chord duplicate MIDI** — count-based hit tracking (Map not Set) for same-note chords
 - **State reset on song load** — loop, selection, modes all cleared before loading new song
 - **Audio init retry** — initPromise reset on failure so next user gesture can retry
+- **iOS audio unlock** — `Tone.start()` called synchronously in gesture handler, `unlockAudio()` on every play/practice path
+- **PWA offline** — service worker caches app shell (network-first), songs and Salamander samples (cache-first)
+- **Chord detection** — ScoreOverlay detects triads/sevenths from simultaneous MIDI notes, renders above staff
+- **MIDI auto-reconnect** — `onstatechange` re-binds inputs on disconnect/reconnect, releases stuck notes
 
 ## Important Patterns
 - `ScoreAnalyzer.analyze()` iterates OSMD cursor to build `NoteEvent[]` timeline
@@ -97,17 +106,18 @@ Use semantic commit messages: `feat:`, `fix:`, `test:`, `style:`, `refactor:`, `
 
 ## Browser Support
 - Chrome/Edge/Firefox: full support (Web MIDI + Web Audio)
-- Safari: no MIDI keyboard (Web MIDI API unsupported), audio works
-- iPad/iPhone: responsive layout, touch support, safe area insets
+- Safari: no MIDI keyboard (Web MIDI API unsupported), audio works with gesture unlock
+- iPad/iPhone: responsive layout, touch support, safe area insets, audio unlock on first tap
 
 ## Known Limitations
 - OSMD `sheet` property is protected — accessed via `(osmd as any).sheet`
 - Bundle is ~382KB gzipped (OSMD + Tone.js are large)
-- Salamander samples require internet on first load (cached by browser)
+- Salamander samples require internet on first load (cached by service worker thereafter)
 - Metronome uses setInterval (drifts slightly over long sessions)
 
 ## Testing
-- `bun run test` — 179 unit tests (93.6% statement coverage)
-- `bun run test:e2e` — 115 E2E tests including full playthrough of all 18 songs
-- Total: 294 tests, all passing
+- `bun run test` — 198 unit tests (93.6% statement coverage)
+- `bun run test:e2e` — 438 E2E tests including full playthrough of all 18 songs + visual regression
+- Total: 636 tests, all passing
 - Full playthrough test validates every note of every song with 0 wrong notes
+- Visual regression tests compare screenshots of score rendering, overlays, coloring, keyboard

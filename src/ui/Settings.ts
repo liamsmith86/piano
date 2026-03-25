@@ -13,6 +13,7 @@ export interface AppSettings {
   showNoteNamesOnScore: boolean;
   showAllAccidentals: boolean;
   showFingering: boolean;
+  showChords: boolean;
 }
 
 const SETTINGS_KEY = 'piano-practice-settings';
@@ -32,6 +33,7 @@ const DEFAULTS: AppSettings = {
   showNoteNamesOnScore: false,
   showAllAccidentals: false,
   showFingering: false,
+  showChords: false,
 };
 
 export function loadSettings(): AppSettings {
@@ -139,6 +141,13 @@ export class SettingsPanel {
               <span class="sp-toggle-desc">Show optimal finger numbers (1-5) for each note, computed automatically</span>
             </div>
           </label>
+          <label class="sp-toggle">
+            <input type="checkbox" data-setting="showChords" ${this.settings.showChords ? 'checked' : ''} />
+            <div class="sp-toggle-info">
+              <span class="sp-toggle-label">Chord Symbols</span>
+              <span class="sp-toggle-desc">Show detected chord names (C, Dm7, G7...) above the staff</span>
+            </div>
+          </label>
         </div>
 
         <div class="sp-section">
@@ -228,6 +237,7 @@ export class SettingsPanel {
           showNoteNamesOnScore: true,
           showAllAccidentals: true,
           showFingering: true,
+          showChords: true,
         };
         break;
       case 'intermediate':
@@ -243,6 +253,7 @@ export class SettingsPanel {
           showNoteNamesOnScore: false,
           showAllAccidentals: true,
           showFingering: false,
+          showChords: true,
         };
         break;
       case 'advanced':
@@ -258,6 +269,7 @@ export class SettingsPanel {
           showNoteNamesOnScore: false,
           showAllAccidentals: false,
           showFingering: false,
+          showChords: false,
         };
         break;
     }

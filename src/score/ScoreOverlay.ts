@@ -25,6 +25,66 @@ function accidentalSymbol(acc: number): string {
   }
 }
 
+// Chord detection from pitch classes
+const CHORD_TYPES: [number[], string][] = [
+  // Triads
+  [[0, 4, 7], 'maj'],
+  [[0, 3, 7], 'm'],
+  [[0, 3, 6], 'dim'],
+  [[0, 4, 8], 'aug'],
+  [[0, 5, 7], 'sus4'],
+  [[0, 2, 7], 'sus2'],
+  // Sevenths
+  [[0, 4, 7, 11], 'maj7'],
+  [[0, 4, 7, 10], '7'],
+  [[0, 3, 7, 10], 'm7'],
+  [[0, 3, 6, 10], 'm7♭5'],
+  [[0, 3, 6, 9], 'dim7'],
+  [[0, 4, 8, 10], 'aug7'],
+  // Sixths
+  [[0, 4, 7, 9], '6'],
+  [[0, 3, 7, 9], 'm6'],
+];
+
+const ROOT_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+
+function detectChord(midiNotes: number[]): string | null {
+  if (midiNotes.length < 3) return null;
+
+  // Get unique pitch classes sorted
+  const pitchClasses = [...new Set(midiNotes.map(m => m % 12))].sort((a, b) => a - b);
+  if (pitchClasses.length < 3) return null;
+
+  // Try each pitch class as root (to handle inversions)
+  for (const root of pitchClasses) {
+    const intervals = pitchClasses.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
+
+    for (const [pattern, name] of CHORD_TYPES) {
+      if (pattern.length !== intervals.length) continue;
+      if (pattern.every((v, i) => v === intervals[i])) {
+        const suffix = name === 'maj' ? '' : name;
+        return ROOT_NAMES[root] + suffix;
+      }
+    }
+  }
+
+  // Try matching just the triad (ignore extra notes)
+  if (pitchClasses.length > 3) {
+    for (const root of pitchClasses) {
+      const intervals = pitchClasses.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
+      for (const [pattern, name] of CHORD_TYPES) {
+        if (pattern.length > intervals.length) continue;
+        if (pattern.every(v => intervals.includes(v))) {
+          const suffix = name === 'maj' ? '' : name;
+          return ROOT_NAMES[root] + suffix;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 export class ScoreOverlay {
   private container: HTMLElement;
   private overlayGroup: SVGGElement | null = null;
@@ -32,6 +92,7 @@ export class ScoreOverlay {
   private showNoteNames = false;
   private showAccidentals = false;
   private showFingering = false;
+  private showChords = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -49,6 +110,10 @@ export class ScoreOverlay {
     this.showFingering = enabled;
   }
 
+  setShowChords(enabled: boolean): void {
+    this.showChords = enabled;
+  }
+
   /**
    * Render overlays on the score by injecting a <g> directly into OSMD's SVG.
    * This ensures getBBox() coordinates are in the same space as our text elements.
@@ -56,7 +121,7 @@ export class ScoreOverlay {
   update(osmd: OpenSheetMusicDisplay, timeline?: NoteEvent[]): void {
     this.clear();
 
-    if (!this.showNoteNames && !this.showAccidentals && !this.showFingering) return;
+    if (!this.showNoteNames && !this.showAccidentals && !this.showFingering && !this.showChords) return;
 
     const graphic = (osmd as any).graphic;
     if (!graphic?.measureList) return;
@@ -120,6 +185,11 @@ export class ScoreOverlay {
           }
         }
       }
+    }
+
+    // Feature 4: Chord symbols above the staff at each beat position
+    if (this.showChords && timeline) {
+      this.renderChordSymbols(graphic, timeline, svgGroups);
     }
 
     // Append each group to its SVG page (only if it has content)
@@ -332,6 +402,144 @@ export class ScoreOverlay {
         group.appendChild(text);
       }
     }
+  }
+
+  private renderChordSymbols(
+    graphic: any,
+    timeline: NoteEvent[],
+    svgGroups: Map<SVGSVGElement, SVGGElement>,
+  ): void {
+    // Group timeline events by measure and collect all MIDI notes per beat position
+    // We only render a chord symbol at positions where there are 3+ unique pitch classes
+    const rendered = new Set<string>(); // "measure:beat" dedup key
+
+    for (const event of timeline) {
+      const allMidis = event.notes.map(n => n.midi);
+      const chord = detectChord(allMidis);
+      if (!chord) continue;
+
+      const key = `${event.measureNumber}:${event.index}`;
+      if (rendered.has(key)) continue;
+      rendered.add(key);
+
+      // Find the graphical measure to get position
+      const measureRow = graphic.measureList[event.measureNumber - 1];
+      if (!measureRow?.[0]) continue;
+      const gMeasure = measureRow[0]; // top staff measure
+
+      // Find the staff entry closest to this event's cursor index
+      let targetEntry: any = null;
+      if (gMeasure.staffEntries) {
+        for (const entry of gMeasure.staffEntries) {
+          if (!entry?.graphicalVoiceEntries) continue;
+          for (const ve of entry.graphicalVoiceEntries) {
+            if (!ve?.notes) continue;
+            for (const gNote of ve.notes) {
+              const src = gNote.sourceNote;
+              if (!src || src.isRest?.()) continue;
+              const midi = ((src.Pitch?.getHalfTone?.() ?? src.Pitch?.halfTone ?? 0) + 12);
+              if (allMidis.includes(midi)) {
+                targetEntry = entry;
+                break;
+              }
+            }
+            if (targetEntry) break;
+          }
+          if (targetEntry) break;
+        }
+      }
+
+      if (!targetEntry) continue;
+
+      // Get X position from the staff entry and Y position above the top staff
+      let entryBox: { x: number; y: number; width: number; height: number } | null = null;
+      try {
+        // Try getting position from the first note in the entry
+        for (const ve of targetEntry.graphicalVoiceEntries) {
+          for (const gNote of ve.notes) {
+            const svgEl = gNote.getSVGGElement?.();
+            if (svgEl) {
+              const b = svgEl.getBBox?.();
+              if (b && b.width > 0) { entryBox = b; break; }
+            }
+          }
+          if (entryBox) break;
+        }
+      } catch { /* continue */ }
+
+      if (!entryBox) continue;
+
+      // Find which SVG page this belongs to
+      let noteGroup: SVGGElement | null = null;
+      try {
+        for (const ve of targetEntry.graphicalVoiceEntries) {
+          for (const gNote of ve.notes) {
+            const svgEl = gNote.getSVGGElement?.();
+            if (svgEl) {
+              const parentSvg = svgEl.closest('svg') as SVGSVGElement | null;
+              if (parentSvg) { noteGroup = svgGroups.get(parentSvg) ?? null; break; }
+            }
+          }
+          if (noteGroup) break;
+        }
+      } catch { /* continue */ }
+      if (!noteGroup) noteGroup = svgGroups.values().next().value ?? null;
+      if (!noteGroup) continue;
+
+      // Get the bounding box of the top staff line to position above it
+      const staffY = this.getTopStaffY(gMeasure) ?? (entryBox.y - 30);
+
+      const cx = entryBox.x + entryBox.width / 2;
+      const fontSize = 11;
+      const yPos = staffY - 8; // Above the top staff line
+
+      // Background pill
+      const pillW = chord.length * fontSize * 0.55 + 6;
+      const pillH = fontSize + 2;
+      const pill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      pill.setAttribute('x', String(cx - pillW / 2));
+      pill.setAttribute('y', String(yPos - pillH / 2));
+      pill.setAttribute('width', String(pillW));
+      pill.setAttribute('height', String(pillH));
+      pill.setAttribute('rx', '2');
+      pill.setAttribute('fill', '#fef3c7');
+      pill.setAttribute('opacity', '0.9');
+      pill.setAttribute('class', 'chord-symbol-bg');
+      noteGroup.appendChild(pill);
+
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', String(cx));
+      text.setAttribute('y', String(yPos));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'central');
+      text.setAttribute('font-size', String(fontSize));
+      text.setAttribute('font-weight', '700');
+      text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
+      text.setAttribute('fill', '#92400e');
+      text.setAttribute('class', 'chord-symbol');
+      text.textContent = chord;
+      noteGroup.appendChild(text);
+    }
+  }
+
+  private getTopStaffY(gMeasure: any): number | null {
+    try {
+      // Try to get bounding box of the first staff entry in the measure
+      if (gMeasure.staffEntries?.length > 0) {
+        const entry = gMeasure.staffEntries[0];
+        for (const ve of entry.graphicalVoiceEntries) {
+          for (const gNote of ve.notes) {
+            const svgEl = gNote.getSVGGElement?.();
+            if (svgEl) {
+              const b = svgEl.getBBox?.();
+              // Return Y position of the top of the staff (above notes)
+              if (b && b.height > 0) return b.y - 20;
+            }
+          }
+        }
+      }
+    } catch { /* continue */ }
+    return null;
   }
 
   private buildKeyMap(osmd: OpenSheetMusicDisplay): Map<number, any> {

@@ -8,6 +8,7 @@ import { SettingsPanel } from './ui/Settings';
 import { ShortcutsHelp } from './ui/ShortcutsHelp';
 import type { AppSettings } from './ui/Settings';
 import { addSession } from './progress';
+import * as Tone from 'tone';
 import './style.css';
 
 declare global {
@@ -58,6 +59,7 @@ async function main(): Promise<void> {
       showNoteNamesOnScore: settings.showNoteNamesOnScore,
       showAllAccidentals: settings.showAllAccidentals,
       showFingering: settings.showFingering,
+      showChords: settings.showChords,
     });
   };
 
@@ -76,12 +78,13 @@ async function main(): Promise<void> {
 
   // Wrap play/practice start with count-in
   const ensureAudio = async () => {
+    // Always unlock AudioContext first (iOS Safari needs this on each user gesture path)
+    await app.audio.unlockAudio();
     if (!app.audio.ready) {
       try {
         await app.init();
       } catch (err) {
         console.warn('Audio init failed, retrying:', err);
-        // Retry once — covers edge case where first gesture-based init races
         await app.init();
       }
     }
@@ -249,23 +252,26 @@ async function main(): Promise<void> {
   });
 
   // Initialize audio on first user interaction (guarded against double-fire)
+  // iOS Safari requires Tone.start() to be called in the synchronous part of a
+  // user gesture handler. We call it immediately, then do the rest of init async.
   let audioInitStarted = false;
-  const initAudio = async () => {
+  const initAudio = () => {
     if (audioInitStarted) return;
     audioInitStarted = true;
     document.removeEventListener('click', initAudio);
     document.removeEventListener('keydown', initAudio);
     document.removeEventListener('touchstart', initAudio);
-    try {
-      await app.init();
-    } catch (err) {
+    // Synchronously start AudioContext in gesture handler (critical for iOS Safari)
+    Tone.start().catch(() => {});
+    // Then do the full async init
+    app.init().catch((err) => {
       audioInitStarted = false; // allow retry on failure
       console.warn('Audio init deferred:', err);
-    }
+    });
   };
   document.addEventListener('click', initAudio);
   document.addEventListener('keydown', initAudio);
-  document.addEventListener('touchstart', initAudio, { once: true });
+  document.addEventListener('touchstart', initAudio);
 
   // Override toolbar play button to use count-in
   toolbar.setOnPlay(async () => {
@@ -327,3 +333,12 @@ async function main(): Promise<void> {
 }
 
 main().catch(console.error);
+
+// Register service worker for offline support (production only)
+if ('serviceWorker' in navigator && !import.meta.env.DEV) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}

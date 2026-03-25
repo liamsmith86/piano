@@ -209,7 +209,7 @@ export class PianoApp {
     return this.loadedSong;
   }
 
-  updateOverlays(settings: { showNoteNamesOnScore: boolean; showAllAccidentals: boolean; showFingering: boolean }): void {
+  updateOverlays(settings: { showNoteNamesOnScore: boolean; showAllAccidentals: boolean; showFingering: boolean; showChords: boolean }): void {
     const osmd = this.renderer.getOSMD();
     if (!osmd) return;
 
@@ -232,6 +232,7 @@ export class PianoApp {
     overlay.setShowNoteNames(settings.showNoteNamesOnScore);
     overlay.setShowAccidentals(settings.showAllAccidentals);
     overlay.setShowFingering(settings.showFingering);
+    overlay.setShowChords(settings.showChords);
     overlay.update(osmd, timeline);
   }
 
