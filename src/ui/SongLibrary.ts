@@ -38,6 +38,24 @@ export class SongLibrary {
     const fileInput = header.querySelector('.sl-file-input') as HTMLInputElement;
     fileInput.addEventListener('change', () => this.handleUpload(fileInput));
 
+    // Search bar
+    const searchBar = document.createElement('div');
+    searchBar.className = 'sl-search';
+    searchBar.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="sl-search-input" placeholder="Search songs..." />
+    `;
+    wrapper.appendChild(searchBar);
+
+    const searchInput = searchBar.querySelector('.sl-search-input') as HTMLInputElement;
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value.toLowerCase().trim();
+      this.grid?.querySelectorAll('.sl-card').forEach(card => {
+        const title = card.querySelector('.sl-card-title')?.textContent?.toLowerCase() ?? '';
+        (card as HTMLElement).style.display = title.includes(query) ? '' : 'none';
+      });
+    });
+
     // Welcome banner (only for first visit)
     if (!localStorage.getItem('piano-welcomed')) {
       const welcome = document.createElement('div');
