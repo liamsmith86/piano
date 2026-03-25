@@ -12,10 +12,10 @@ async function loadSong(page: any, url: string) {
 }
 
 test.describe('Deep Practice Mode Testing', () => {
-  test('plays through entire Bella Ciao (Easy) correctly', async ({ page }) => {
+  test('plays through entire Mozart Piano Sonata correctly', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
@@ -48,7 +48,7 @@ test.describe('Deep Practice Mode Testing', () => {
   test('verifies notes are valid MIDI range throughout song', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     const timeline = await page.evaluate(() => {
       const events = window.pianoApp.getNoteTimeline();
@@ -81,7 +81,7 @@ test.describe('Deep Practice Mode Testing', () => {
   test('hand filtering preserves correct staff assignment', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     const result = await page.evaluate(() => {
       const analyzer = window.pianoApp.analyzer;
@@ -107,7 +107,7 @@ test.describe('Deep Practice Mode Testing', () => {
   test('plays through with right hand only', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setHand('right');
@@ -142,7 +142,7 @@ test.describe('Deep Practice Mode Testing', () => {
   test('loop mode repeats the section', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     // Set up loop on measures 1-2
     await page.evaluate(() => {
@@ -179,7 +179,7 @@ test.describe('Deep Practice Mode Testing', () => {
   test('wrong notes tracked correctly across multiple attempts', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
@@ -210,9 +210,9 @@ test.describe('Deep Practice Mode Testing', () => {
 
 test.describe('Multiple Song Deep Tests', () => {
   const songs = [
-    { url: '/songs/roaring-tides.mxl', name: 'Roaring Tides' },
-    { url: '/songs/changes-xxxtentacion.mxl', name: 'Changes' },
-    { url: '/songs/runaway-kanye-west.mxl', name: 'Runaway' },
+    { url: '/songs/BeetAnGeSample.mxl', name: 'Beethoven - An die Geliebte' },
+    { url: '/songs/BrahWiMeSample.mxl', name: 'Brahms - Wie Melodien' },
+    { url: '/songs/Dichterliebe01.mxl', name: 'Schumann - Dichterliebe' },
   ];
 
   for (const song of songs) {
@@ -259,7 +259,7 @@ test.describe('Measure Stats Tracking', () => {
   test('tracks errors per measure correctly', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
@@ -287,7 +287,7 @@ test.describe('Measure Stats Tracking', () => {
   test('measure stats are empty with perfect practice', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());

@@ -11,7 +11,7 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load first song and set a loop
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -21,7 +21,7 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load a different song
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/roaring-tides.mxl');
+      await window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -45,7 +45,7 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load first song and play some practice notes
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
       window.pianoApp.setMode('practice');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
@@ -61,7 +61,7 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load second song
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/roaring-tides.mxl');
+      await window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -80,7 +80,7 @@ test.describe('State Reset Between Song Changes', () => {
     await waitForApp(page);
 
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -89,7 +89,7 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load second song
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/roaring-tides.mxl');
+      await window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -103,13 +103,13 @@ test.describe('State Reset Between Song Changes', () => {
     await waitForApp(page);
 
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
       window.pianoApp.setHand('right');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/roaring-tides.mxl');
+      await window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 
@@ -124,9 +124,9 @@ test.describe('State Reset Between Song Changes', () => {
 
     // Load songs rapidly
     const songs = [
-      '/songs/bella-ciaoeasy-version.mxl',
-      '/songs/roaring-tides.mxl',
-      '/songs/runaway-kanye-west.mxl',
+      '/songs/MozartPianoSonata.mxl',
+      '/songs/BeetAnGeSample.mxl',
+      '/songs/Dichterliebe01.mxl',
     ];
 
     for (const url of songs) {

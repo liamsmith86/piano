@@ -72,6 +72,9 @@ export class PracticeMode {
       return;
     }
 
+    // Clear any visual state from previous session
+    this.renderer.clearNoteHighlights();
+
     this.active = true;
     this.updateFilteredTimeline();
     this.cursorIndex = 0;

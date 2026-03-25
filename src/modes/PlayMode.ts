@@ -43,6 +43,9 @@ export class PlayMode {
       return;
     }
 
+    // Clear any visual state from previous playthrough
+    this.renderer.clearNoteHighlights();
+
     // Start fresh — filter timeline by loop range if set
     let fullTimeline = this.analyzer.getTimeline();
     if (this.loopStart !== null && this.loopEnd !== null) {

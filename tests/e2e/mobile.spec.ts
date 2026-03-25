@@ -11,14 +11,14 @@ test.describe('iPhone Viewport', () => {
     await page.goto('/');
     await waitForApp(page);
     await expect(page.locator('.song-library')).toBeVisible();
-    expect(await page.locator('.sl-card').count()).toBeGreaterThanOrEqual(18);
+    expect(await page.locator('.sl-card').count()).toBeGreaterThanOrEqual(1);
   });
 
   test('can load and display a song', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
     await expect(page.locator('#score-container')).toBeVisible();
@@ -38,7 +38,7 @@ test.describe('iPhone Viewport', () => {
     await page.goto('/');
     await waitForApp(page);
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
       window.pianoApp.setMode('practice');
       await window.pianoApp.startPractice();
     });
@@ -74,7 +74,7 @@ test.describe('iPad Viewport', () => {
     await page.goto('/');
     await waitForApp(page);
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/roaring-tides.mxl');
+      await window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl');
       window.pianoApp.setMode('practice');
       await window.pianoApp.startPractice();
     });

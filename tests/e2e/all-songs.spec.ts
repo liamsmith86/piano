@@ -1,12 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { PRELOADED_SONGS } from '../../src/types';
+import { discoverAllSongs } from './song-discovery';
 
 async function waitForApp(page: any) {
   await page.waitForFunction(() => window.pianoApp !== undefined, { timeout: 10000 });
 }
 
-// Test every preloaded song loads and produces a valid timeline
-for (const song of PRELOADED_SONGS) {
+const allSongs = discoverAllSongs();
+
+// Test every discovered song loads and produces a valid timeline
+for (const song of allSongs) {
   test(`loads and analyzes: ${song.title}`, async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);

@@ -31,3 +31,9 @@ coverage/
 
 # Bun
 bun.lock
+
+# Personal (copyrighted) song collection
+public/songs/personal/
+
+# Auto-generated song manifest
+public/songs/manifest.json

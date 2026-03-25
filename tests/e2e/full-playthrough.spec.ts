@@ -1,12 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { PRELOADED_SONGS } from '../../src/types';
+import { discoverAllSongs } from './song-discovery';
 
 async function waitForApp(page: any) {
   await page.waitForFunction(() => window.pianoApp !== undefined, { timeout: 10000 });
 }
 
-// Test EVERY preloaded song: full playthrough with zero wrong notes
-for (const song of PRELOADED_SONGS) {
+const allSongs = discoverAllSongs();
+
+// Test EVERY discovered song: full playthrough with zero wrong notes
+for (const song of allSongs) {
   test(`full playthrough: ${song.title}`, async ({ page }) => {
     test.setTimeout(120000); // some songs are very long
     await page.goto('/');

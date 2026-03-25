@@ -4,7 +4,7 @@ async function waitForApp(page: any) {
   await page.waitForFunction(() => window.pianoApp !== undefined, { timeout: 10000 });
 }
 
-async function loadSong(page: any, url = '/songs/bella-ciaoeasy-version.mxl') {
+async function loadSong(page: any, url = '/songs/MozartPianoSonata.mxl') {
   await page.evaluate(async (u: string) => await window.pianoApp.loadSong(u), url);
   await page.waitForSelector('#score-container svg', { timeout: 15000 });
   await page.waitForTimeout(500);

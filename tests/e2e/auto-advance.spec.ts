@@ -13,7 +13,7 @@ test.describe('Auto-Advance Timer', () => {
   test('auto-advances after timeout when no input', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     // Set very short auto-advance (500ms)
     await page.evaluate(() => {
@@ -36,7 +36,7 @@ test.describe('Auto-Advance Timer', () => {
   test('auto-advance resets timer on correct partial input (chord)', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setMode('practice');
@@ -60,7 +60,7 @@ test.describe('Auto-Advance Timer', () => {
   test('disabling auto-advance stops the timer', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setMode('practice');
@@ -83,7 +83,7 @@ test.describe('Auto-Advance Timer', () => {
   test('auto-advance records measure stats', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setMode('practice');

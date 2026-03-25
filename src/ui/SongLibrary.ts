@@ -1,6 +1,5 @@
 import type { PianoApp } from '../api';
 import type { SongInfo } from '../types';
-import { PRELOADED_SONGS } from '../types';
 import { getBestAccuracyForSong, getSessionsForSong } from '../progress';
 
 function escapeHtml(str: string): string {
@@ -83,19 +82,19 @@ export class SongLibrary {
     this.grid = document.createElement('div');
     this.grid.className = 'sl-grid';
 
-    for (const song of PRELOADED_SONGS) {
-      this.grid.appendChild(this.createSongCard(song));
-    }
+    // Discover all songs (preloaded + personal from manifest)
+    await this.app.discoverSongs();
 
-    // Load and show uploaded songs from IndexedDB
+    // Load uploaded songs from IndexedDB
     try {
       await this.app.loadUploadedSongsFromStorage();
-      const uploaded = this.app.getSongList().filter(s => s.source === 'uploaded');
-      for (const song of uploaded) {
-        this.grid.appendChild(this.createSongCard(song, true));
-      }
     } catch {
       // IndexedDB unavailable — ignore
+    }
+
+    const allSongs = this.app.getSongList();
+    for (const song of allSongs) {
+      this.grid.appendChild(this.createSongCard(song, song.source === 'uploaded'));
     }
 
     wrapper.appendChild(this.grid);

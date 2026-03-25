@@ -18,7 +18,7 @@ test.describe('Full User Journey', () => {
 
     // 4. See song library with all songs
     const songCount = await page.locator('.sl-card').count();
-    expect(songCount).toBeGreaterThanOrEqual(18);
+    expect(songCount).toBeGreaterThanOrEqual(1);
 
     // 5. Click a song to load it
     await page.locator('.sl-card').first().click();
@@ -107,7 +107,7 @@ test.describe('Full User Journey', () => {
     await expect(page.locator('#library-container')).toBeVisible();
 
     // 23. Library should still have songs
-    expect(await page.locator('.sl-card').count()).toBeGreaterThanOrEqual(18);
+    expect(await page.locator('.sl-card').count()).toBeGreaterThanOrEqual(1);
   });
 
   test('switch between play and practice mode seamlessly', async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe('Full User Journey', () => {
 
     // Load song
     await page.evaluate(async () => {
-      await window.pianoApp.loadSong('/songs/bella-ciaoeasy-version.mxl');
+      await window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
 

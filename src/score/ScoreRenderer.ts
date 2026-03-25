@@ -118,8 +118,8 @@ export class ScoreRenderer {
 
   // Elements currently highlighted (blue) at the cursor — will be restored on next advance
   private currentHighlight: { el: SVGElement; origFill: string | null; origStroke: string | null }[] = [];
-  // Elements permanently marked as played (green) — persist until clearNoteHighlights
-  private playedElements = new Set<SVGElement>();
+  // Elements marked as played (green) — stores original colors for restoration
+  private playedElements = new Map<SVGElement, { origFill: string | null; origStroke: string | null }>();
 
   private colorSvgElements(svgEl: SVGGElement, color: string): SVGElement[] {
     const colored: SVGElement[] = [];
@@ -184,8 +184,17 @@ export class ScoreRenderer {
       try {
         const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
         if (svgEl) {
-          const elements = this.colorSvgElements(svgEl, '#22c55e');
-          for (const el of elements) this.playedElements.add(el);
+          // Store original colors before coloring green
+          svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
+            const svgPath = el as SVGElement;
+            if (!this.playedElements.has(svgPath)) {
+              this.playedElements.set(svgPath, {
+                origFill: svgPath.getAttribute('fill'),
+                origStroke: svgPath.getAttribute('stroke'),
+              });
+            }
+          });
+          this.colorSvgElements(svgEl, '#22c55e');
         }
       } catch {}
     }
@@ -213,7 +222,7 @@ export class ScoreRenderer {
     }
   }
 
-  /** Clear all note coloring (restore originals, remove played markers) */
+  /** Clear all note coloring (restore originals, remove played markers and wrong notes) */
   clearNoteHighlights(): void {
     // Restore current blue highlight
     for (const { el, origFill, origStroke } of this.currentHighlight) {
@@ -223,10 +232,24 @@ export class ScoreRenderer {
       else el.setAttribute('stroke', origStroke);
     }
     this.currentHighlight = [];
-    // Note: we don't restore played (green) elements here — they persist
-    // until the score is reloaded. This is intentional so users can see
-    // what they've played through. They get cleared on song reload via destroy().
+
+    // Restore played (green) elements to their original colors
+    for (const [el, { origFill, origStroke }] of this.playedElements) {
+      if (origFill === null) el.removeAttribute('fill');
+      else el.setAttribute('fill', origFill);
+      if (origStroke === null) el.removeAttribute('stroke');
+      else el.setAttribute('stroke', origStroke);
+    }
     this.playedElements.clear();
+
+    // Clear any lingering wrong note markers
+    if (this.wrongNoteOverlay) {
+      while (this.wrongNoteOverlay.firstChild) {
+        this.wrongNoteOverlay.removeChild(this.wrongNoteOverlay.firstChild);
+      }
+    }
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers.clear();
   }
 
   setHand(hand: HandSelection): void {

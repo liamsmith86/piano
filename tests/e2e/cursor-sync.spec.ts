@@ -13,7 +13,7 @@ test.describe('Cursor Sync Integrity', () => {
   test('right-hand practice advances cursor correctly through the full piece', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setHand('right');
@@ -42,7 +42,7 @@ test.describe('Cursor Sync Integrity', () => {
   test('left-hand practice advances cursor correctly', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => {
       window.pianoApp.setHand('left');
@@ -68,10 +68,10 @@ test.describe('Cursor Sync Integrity', () => {
     expect(finalState.wrongCount).toBe(0);
   });
 
-  test('Heat Waves: full playthrough with repeats preserves timing', async ({ page }) => {
+  test('Schubert Ave Maria: full playthrough preserves timing', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/glass-animals-heat-waves-easy-piano.mxl');
+    await loadSong(page, '/songs/SchbAvMaSample.mxl');
 
     // Verify timestamps are monotonic (the repeat bug fix)
     const monotonic = await page.evaluate(() => {
@@ -105,7 +105,7 @@ test.describe('Cursor Sync Integrity', () => {
   test('switching hands mid-practice resets correctly', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    await loadSong(page, '/songs/bella-ciaoeasy-version.mxl');
+    await loadSong(page, '/songs/MozartPianoSonata.mxl');
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
