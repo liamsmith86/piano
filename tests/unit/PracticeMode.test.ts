@@ -114,7 +114,7 @@ describe('PracticeMode', () => {
     expect(pm.getExpectedNotes()).toEqual([60]);
     expect(renderer.cursorReset).toHaveBeenCalled();
     expect(renderer.cursorShow).toHaveBeenCalled();
-    expect(keyboard.highlightKeys).toHaveBeenCalledWith([60]);
+    expect(keyboard.highlightKeys).toHaveBeenCalledWith([60], expect.any(Map));
   });
 
   it('advances cursor on correct note', async () => {
@@ -234,7 +234,9 @@ describe('PracticeMode', () => {
 
     expect(pm.isActive()).toBe(false);
     expect(renderer.cursorHide).toHaveBeenCalled();
-    expect(keyboard.highlightKeys).toHaveBeenCalledWith([]);
+    // Last call clears all highlights (empty array)
+    const lastCall = keyboard.highlightKeys.mock.calls.at(-1);
+    expect(lastCall?.[0]).toEqual([]);
   });
 
   it('does not respond to input when stopped', async () => {

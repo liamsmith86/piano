@@ -735,6 +735,11 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
   border-color: #60a5fa;
 }
 
+.vk-white.vk-highlight-left {
+  background: #c4b5fd;
+  border-color: #a78bfa;
+}
+
 .vk-white.vk-correct {
   background: var(--success) !important;
 }
@@ -763,6 +768,10 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
 
 .vk-black.vk-highlight {
   background: #2563eb;
+}
+
+.vk-black.vk-highlight-left {
+  background: #7c3aed;
 }
 
 .vk-black.vk-correct {

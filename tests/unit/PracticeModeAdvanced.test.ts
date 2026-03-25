@@ -310,7 +310,8 @@ describe('PracticeMode - stop clears everything', () => {
 
     expect(renderer.clearNoteHighlights).toHaveBeenCalled();
     expect(renderer.cursorHide).toHaveBeenCalled();
-    expect(keyboard.highlightKeys).toHaveBeenCalledWith([]);
+    const lastCall = keyboard.highlightKeys.mock.calls.at(-1);
+    expect(lastCall?.[0]).toEqual([]);
     expect(pm.isActive()).toBe(false);
   });
 });

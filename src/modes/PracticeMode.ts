@@ -265,7 +265,16 @@ export class PracticeMode {
   }
 
   private highlightExpected(): void {
-    this.virtualKeyboard?.highlightKeys(this.expectedMidis);
+    // Build a map of MIDI → staff for left/right hand coloring on keyboard
+    const event = this.filteredTimeline[this.cursorIndex];
+    let staffByMidi: Map<number, number> | undefined;
+    if (event) {
+      staffByMidi = new Map();
+      for (const n of event.notes) {
+        staffByMidi.set(n.midi, n.staff);
+      }
+    }
+    this.virtualKeyboard?.highlightKeys(this.expectedMidis, staffByMidi);
     // Highlight noteheads at current cursor position in blue
     this.renderer.highlightCurrentNotes('#3b82f6');
   }

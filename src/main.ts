@@ -77,7 +77,13 @@ async function main(): Promise<void> {
   // Wrap play/practice start with count-in
   const ensureAudio = async () => {
     if (!app.audio.ready) {
-      await app.init();
+      try {
+        await app.init();
+      } catch (err) {
+        console.warn('Audio init failed, retrying:', err);
+        // Retry once — covers edge case where first gesture-based init races
+        await app.init();
+      }
     }
   };
 

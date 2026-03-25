@@ -57,6 +57,9 @@ export class AudioEngine {
       volume: -15,
     }).toDestination();
 
+    // Default to muted — user adjusts with volume slider
+    this.sampler.volume.value = -Infinity;
+
     this.isReady = true;
   }
 

@@ -142,18 +142,20 @@ export class VirtualKeyboard {
     return key;
   }
 
-  highlightKeys(midiNumbers: number[]): void {
+  highlightKeys(midiNumbers: number[], staffByMidi?: Map<number, number>): void {
     // Clear old highlights
     for (const midi of this.highlightedNotes) {
-      this.keyElements.get(midi)?.classList.remove('vk-highlight');
+      const el = this.keyElements.get(midi);
+      el?.classList.remove('vk-highlight', 'vk-highlight-left');
     }
     this.highlightedNotes.clear();
 
-    // Set new highlights
+    // Set new highlights — left hand (staff 2) gets a distinct color
     for (const midi of midiNumbers) {
       const el = this.keyElements.get(midi);
       if (el) {
-        el.classList.add('vk-highlight');
+        const staff = staffByMidi?.get(midi);
+        el.classList.add(staff === 2 ? 'vk-highlight-left' : 'vk-highlight');
         this.highlightedNotes.add(midi);
       }
     }
