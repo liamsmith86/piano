@@ -99,8 +99,10 @@ export class SongLibrary {
   }
 
   private createSongCard(song: SongInfo, isUploaded = false): HTMLElement {
+    const loadedSong = this.app.getLoadedSong();
+    const isActive = loadedSong?.id === song.id;
     const card = document.createElement('button');
-    card.className = `sl-card${isUploaded ? ' sl-card-uploaded' : ''}`;
+    card.className = `sl-card${isUploaded ? ' sl-card-uploaded' : ''}${isActive ? ' sl-card-active' : ''}`;
     card.dataset.songId = song.id;
 
     const iconColor = isUploaded ? '#22c55e' : 'currentColor';
@@ -203,7 +205,9 @@ export class SongLibrary {
     this.onSongLoad = cb;
   }
 
-  show(): void {
+  async show(): Promise<void> {
+    // Re-render to update active song indicator and progress badges
+    await this.render();
     this.container.style.display = 'block';
   }
 
