@@ -1,6 +1,7 @@
 export interface AppSettings {
   showNoteNames: boolean;
   showNextNote: boolean;
+  showVirtualKeyboard: boolean;
   countIn: boolean;
   countInBeats: number;
   accompaniment: boolean;
@@ -16,6 +17,7 @@ const SETTINGS_KEY = 'piano-practice-settings';
 const DEFAULTS: AppSettings = {
   showNoteNames: true,
   showNextNote: true,
+  showVirtualKeyboard: false,
   countIn: true,
   countInBeats: 4,
   accompaniment: false,
@@ -75,6 +77,13 @@ export class SettingsPanel {
 
         <div class="sp-section">
           <h3>Display</h3>
+          <label class="sp-toggle">
+            <input type="checkbox" data-setting="showVirtualKeyboard" ${this.settings.showVirtualKeyboard ? 'checked' : ''} />
+            <div class="sp-toggle-info">
+              <span class="sp-toggle-label">Virtual Keyboard</span>
+              <span class="sp-toggle-desc">Show the on-screen piano keyboard (auto-shows in practice mode)</span>
+            </div>
+          </label>
           <label class="sp-toggle">
             <input type="checkbox" data-setting="showNoteNames" ${this.settings.showNoteNames ? 'checked' : ''} />
             <div class="sp-toggle-info">
@@ -184,6 +193,7 @@ export class SettingsPanel {
           ...this.settings,
           showNoteNames: true,
           showNextNote: true,
+          showVirtualKeyboard: true,
           highlightExpectedKeys: true,
           wrongNoteLabels: true,
           countIn: true,
@@ -195,6 +205,7 @@ export class SettingsPanel {
           ...this.settings,
           showNoteNames: true,
           showNextNote: false,
+          showVirtualKeyboard: false,
           highlightExpectedKeys: true,
           wrongNoteLabels: true,
           countIn: true,
@@ -206,6 +217,7 @@ export class SettingsPanel {
           ...this.settings,
           showNoteNames: false,
           showNextNote: false,
+          showVirtualKeyboard: false,
           highlightExpectedKeys: false,
           wrongNoteLabels: false,
           countIn: false,

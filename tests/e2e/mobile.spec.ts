@@ -22,7 +22,8 @@ test.describe('iPhone Viewport', () => {
     });
     await page.waitForSelector('#score-container svg', { timeout: 15000 });
     await expect(page.locator('#score-container')).toBeVisible();
-    await expect(page.locator('.virtual-keyboard')).toBeVisible();
+    // Keyboard hidden by default (only shows in practice mode or with setting)
+    await expect(page.locator('#keyboard-container')).not.toBeVisible();
   });
 
   test('toolbar controls are accessible', async ({ page }) => {
@@ -67,7 +68,8 @@ test.describe('iPad Viewport', () => {
     await page.goto('/');
     await waitForApp(page);
     await expect(page.locator('.song-library')).toBeVisible();
-    await expect(page.locator('.virtual-keyboard')).toBeVisible();
+    // Keyboard hidden by default
+    await expect(page.locator('#keyboard-container')).not.toBeVisible();
   });
 
   test('score renders and practice works on tablet', async ({ page }) => {

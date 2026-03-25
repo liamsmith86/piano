@@ -25,7 +25,7 @@ test.describe('Settings Panel', () => {
     await page.click('.tb-settings-btn');
 
     const toggles = page.locator('[data-setting]');
-    expect(await toggles.count()).toBeGreaterThanOrEqual(7);
+    expect(await toggles.count()).toBeGreaterThanOrEqual(8);
 
     // Check specific settings exist
     await expect(page.locator('[data-setting="showNoteNames"]')).toBeVisible();

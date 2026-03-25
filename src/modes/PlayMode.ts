@@ -16,6 +16,7 @@ export class PlayMode {
   private hand: HandSelection = 'both';
   private loopStart: number | null = null;
   private loopEnd: number | null = null;
+  private lastMeasure = 0;        // for detecting repeats
 
   constructor(
     audio: AudioEngine,
@@ -64,6 +65,7 @@ export class PlayMode {
     this.renderer.cursorShow();
     this.currentIndex = this.timeline.length > 0 ? this.timeline[0].index : 0;
     this.timelinePosition = 0;
+    this.lastMeasure = 0;
 
     // Offset timestamps so playback starts at time 0
     const startOffset = this.timeline.length > 0 ? this.timeline[0].timestamp : 0;
@@ -103,6 +105,15 @@ export class PlayMode {
 
   private onCursorAdvance(eventIndex: number): void {
     const prevIndex = this.currentIndex;
+
+    // Detect repeat: if current event's measure is before the last played measure,
+    // reset green notes so repeat section gets fresh visual feedback
+    const event = this.timeline.find(e => e.index === eventIndex);
+    if (event && event.measureNumber < this.lastMeasure) {
+      this.renderer.resetPlayedNotes();
+    }
+    if (event) this.lastMeasure = event.measureNumber;
+
     // Mark previous notes as played (green)
     this.renderer.markNotesPlayed();
     // Advance OSMD cursor to match the event's cursor step position

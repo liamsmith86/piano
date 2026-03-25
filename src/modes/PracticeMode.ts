@@ -187,7 +187,8 @@ export class PracticeMode {
 
     if (this.cursorIndex >= this.filteredTimeline.length) {
       if (this.loopEnabled && this.loopStart !== null) {
-        // Loop back to start of range
+        // Loop back to start of range — reset green notes for fresh visual
+        this.renderer.resetPlayedNotes();
         this.cursorIndex = 0;
         this.hitCount.clear();
         this.syncCursorToIndex();
@@ -206,6 +207,13 @@ export class PracticeMode {
     }
 
     this.hitCount.clear();
+
+    // Detect repeat: if next event's measure is before previous, reset green notes
+    const prevEvent = this.filteredTimeline[prevIndex];
+    const nextEvent = this.filteredTimeline[this.cursorIndex];
+    if (prevEvent && nextEvent && nextEvent.measureNumber < prevEvent.measureNumber) {
+      this.renderer.resetPlayedNotes();
+    }
 
     // Play accompaniment for inactive hand if enabled
     if (this.accompaniment && this.hand !== 'both') {

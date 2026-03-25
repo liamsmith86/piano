@@ -36,6 +36,12 @@ test.describe('App Initialization', () => {
     await page.goto('/');
     await waitForApp(page);
 
+    // Keyboard is hidden by default; enable it via settings
+    await page.evaluate(() => {
+      localStorage.setItem('piano-practice-settings', JSON.stringify({ showVirtualKeyboard: true }));
+    });
+    await page.reload();
+    await waitForApp(page);
     await expect(page.locator('.virtual-keyboard')).toBeVisible();
     // Should have white keys and black keys
     const whiteKeys = page.locator('.vk-white');
@@ -270,6 +276,11 @@ test.describe('Virtual Keyboard', () => {
   test('clicking a virtual key emits input event', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
+
+    // Show keyboard (hidden by default)
+    await page.evaluate(() => {
+      document.getElementById('keyboard-container')!.style.display = '';
+    });
 
     // Set up event listener to capture all input events
     await page.evaluate(() => {

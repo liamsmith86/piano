@@ -162,10 +162,12 @@ export class ScoreRenderer {
         if (svgEl) {
           svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
             const svgPath = el as SVGElement;
+            // If element is already played (green), use its true original, not current green
+            const played = this.playedElements.get(svgPath);
             this.currentHighlight.push({
               el: svgPath,
-              origFill: svgPath.getAttribute('fill'),
-              origStroke: svgPath.getAttribute('stroke'),
+              origFill: played ? played.origFill : svgPath.getAttribute('fill'),
+              origStroke: played ? played.origStroke : svgPath.getAttribute('stroke'),
             });
           });
           this.colorSvgElements(svgEl, color);
@@ -184,13 +186,15 @@ export class ScoreRenderer {
       try {
         const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
         if (svgEl) {
-          // Store original colors before coloring green
           svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
             const svgPath = el as SVGElement;
             if (!this.playedElements.has(svgPath)) {
+              // If element is currently highlighted (blue), use the true original
+              // stored in currentHighlight, not the current blue color
+              const highlighted = this.currentHighlight.find(h => h.el === svgPath);
               this.playedElements.set(svgPath, {
-                origFill: svgPath.getAttribute('fill'),
-                origStroke: svgPath.getAttribute('stroke'),
+                origFill: highlighted ? highlighted.origFill : svgPath.getAttribute('fill'),
+                origStroke: highlighted ? highlighted.origStroke : svgPath.getAttribute('stroke'),
               });
             }
           });
@@ -220,6 +224,25 @@ export class ScoreRenderer {
         behavior: 'smooth',
       });
     }
+  }
+
+  /** Reset green played notes back to original colors (for repeat sections) */
+  resetPlayedNotes(): void {
+    for (const [el, { origFill, origStroke }] of this.playedElements) {
+      // If this element is currently blue-highlighted, don't change its visual —
+      // just update currentHighlight's stored original so it restores correctly later
+      const highlighted = this.currentHighlight.find(h => h.el === el);
+      if (highlighted) {
+        highlighted.origFill = origFill;
+        highlighted.origStroke = origStroke;
+      } else {
+        if (origFill === null) el.removeAttribute('fill');
+        else el.setAttribute('fill', origFill);
+        if (origStroke === null) el.removeAttribute('stroke');
+        else el.setAttribute('stroke', origStroke);
+      }
+    }
+    this.playedElements.clear();
   }
 
   /** Clear all note coloring (restore originals, remove played markers and wrong notes) */

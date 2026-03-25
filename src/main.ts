@@ -40,15 +40,26 @@ async function main(): Promise<void> {
   const settingsPanel = new SettingsPanel(appEl);
   const shortcutsHelp = new ShortcutsHelp(appEl);
 
+  // Keyboard visibility: hidden by default, auto-shows in practice mode
+  const updateKeyboardVisibility = () => {
+    const settings = settingsPanel.getSettings();
+    const inPractice = app.getMode() === 'practice' && app.practiceMode.isActive();
+    const visible = settings.showVirtualKeyboard || inPractice;
+    keyboardContainer.style.display = visible ? '' : 'none';
+  };
+
   // Apply settings
   const applySettings = (settings: AppSettings) => {
     app.virtualKeyboard?.setShowNoteNames(settings.showNoteNames);
     app.setAccompaniment(settings.accompaniment);
     app.setAutoAdvance(settings.autoAdvance ? settings.autoAdvanceSeconds * 1000 : 0);
+    updateKeyboardVisibility();
   };
 
   settingsPanel.setOnChange(applySettings);
   applySettings(settingsPanel.getSettings());
+  // Hide keyboard by default (setting defaults to false)
+  updateKeyboardVisibility();
 
   toolbar.setOnShowSettings(() => {
     if (settingsPanel.isVisible()) {
@@ -93,6 +104,7 @@ async function main(): Promise<void> {
       await app.startPractice();
       scoreContainer.classList.add('practice-active');
       updateNoteDisplay();
+      updateKeyboardVisibility();
     } catch (err) {
       console.error('Practice start error:', err);
       countIn.hide();
@@ -173,6 +185,7 @@ async function main(): Promise<void> {
   app.on('cursorAdvanced', updateNoteDisplay);
   app.on('modeChanged', ({ mode }) => {
     updateNoteDisplay();
+    updateKeyboardVisibility();
     if (mode !== 'practice') {
       scoreContainer.classList.remove('practice-active');
     }
@@ -181,6 +194,7 @@ async function main(): Promise<void> {
   app.on('songEnd', ({ stats }) => {
     noteDisplay.hide();
     scoreContainer.classList.remove('practice-active');
+    updateKeyboardVisibility();
     if (app.getMode() === 'practice') {
       practiceComplete.show(stats);
 
@@ -236,6 +250,7 @@ async function main(): Promise<void> {
     } else {
       if (app.practiceMode.isActive()) {
         app.stopPractice();
+        updateKeyboardVisibility();
       } else {
         await practiceWithCountIn();
       }

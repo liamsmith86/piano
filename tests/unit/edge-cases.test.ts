@@ -75,6 +75,7 @@ function createMockRenderer() {
     highlightCurrentNotes: vi.fn(),
     markNotesPlayed: vi.fn(),
     clearNoteHighlights: vi.fn(),
+    resetPlayedNotes: vi.fn(),
     scrollToCursor: vi.fn(),
   } as any;
 }
