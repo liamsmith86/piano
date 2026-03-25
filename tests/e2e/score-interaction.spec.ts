@@ -63,14 +63,30 @@ test.describe('Score Interaction: Click-to-Jump', () => {
     let rects = await page.locator('.score-selection-rect').count();
     expect(rects).toBeGreaterThan(0);
 
-    // Click elsewhere to clear
-    const m5 = await getMeasureCenter(page, 5);
-    if (m5) {
-      await page.mouse.click(m5.x, m5.y);
+    // Click outside the selection to clear it.
+    // At higher zoom, we need to click a measure that's clearly outside the
+    // selected range (1-3). Use measure 4 which is immediately adjacent.
+    const m4 = await getMeasureCenter(page, 4);
+    if (m4) {
+      // Scroll the container to make the target visible before clicking
+      await page.evaluate((my: number) => {
+        const c = document.getElementById('score-container')!;
+        const containerRect = c.getBoundingClientRect();
+        const targetRelY = my - containerRect.top;
+        if (targetRelY > c.clientHeight || targetRelY < 0) {
+          c.scrollTop += targetRelY - c.clientHeight / 2;
+        }
+      }, m4.y);
       await page.waitForTimeout(100);
-      rects = await page.locator('.score-selection-rect').count();
-      expect(rects).toBe(0);
+      // Re-get coordinates after scroll
+      const m4After = await getMeasureCenter(page, 4);
+      if (m4After) {
+        await page.mouse.click(m4After.x, m4After.y);
+        await page.waitForTimeout(300);
+      }
     }
+    rects = await page.locator('.score-selection-rect').count();
+    expect(rects).toBe(0);
   });
 });
 

@@ -58,6 +58,7 @@ export interface InputEvent {
 
 export interface AppEventMap {
   loaded: { songId: string };
+  zoomed: { zoom: number };
   noteCorrect: { midiNumber: number; cursorIndex: number };
   noteWrong: { midiNumber: number; expected: number[]; cursorIndex: number };
   cursorAdvanced: { from: number; to: number };

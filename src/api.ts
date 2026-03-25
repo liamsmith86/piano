@@ -354,6 +354,16 @@ export class PianoApp {
     return this.currentHand;
   }
 
+  setZoom(zoom: number): void {
+    this.renderer.setZoom(zoom);
+    this.scoreInteraction.buildMeasureMap();
+    this.events.emit('zoomed', { zoom: this.renderer.getZoom() });
+  }
+
+  getZoom(): number {
+    return this.renderer.getZoom();
+  }
+
   setAccompaniment(enabled: boolean): void {
     this.practiceMode.setAccompaniment(enabled);
   }

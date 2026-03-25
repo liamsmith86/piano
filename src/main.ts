@@ -170,6 +170,11 @@ async function main(): Promise<void> {
     applySettings(settingsPanel.getSettings());
   });
 
+  app.on('zoomed', () => {
+    // Re-render overlays after zoom change (OSMD re-renders destroys old SVG)
+    applySettings(settingsPanel.getSettings());
+  });
+
   // Update note display during practice mode
   const updateNoteDisplay = () => {
     const settings = settingsPanel.getSettings();

@@ -11,6 +11,7 @@ export class ScoreRenderer {
   private wrongNoteOverlay: SVGGElement | null = null;
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private overlay: ScoreOverlay;
+  private _zoom: number = 1.5;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -80,6 +81,7 @@ export class ScoreRenderer {
       }
     }
 
+    this.osmd.zoom = this._zoom;
     this.osmd.render();
     this.setupCursor();
     this.setupWrongNoteOverlay();
@@ -275,6 +277,20 @@ export class ScoreRenderer {
 
   getHand(): HandSelection {
     return this.currentHand;
+  }
+
+  setZoom(zoom: number): void {
+    this._zoom = Math.max(0.5, Math.min(3.0, zoom));
+    if (this.osmd) {
+      this.osmd.zoom = this._zoom;
+      this.osmd.render();
+      this.setupCursor();
+      this.applyHandColoring();
+    }
+  }
+
+  getZoom(): number {
+    return this._zoom;
   }
 
   cursorNext(): boolean {

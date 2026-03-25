@@ -252,6 +252,27 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
   accent-color: var(--primary);
 }
 
+.tb-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.tb-zoom svg {
+  flex-shrink: 0;
+}
+
+.tb-zoom-slider {
+  width: 80px;
+  accent-color: var(--primary);
+}
+
+.tb-zoom-label {
+  font-size: 0.75rem;
+  min-width: 32px;
+}
+
 .tb-tempo-label {
   width: 36px;
   text-align: right;
