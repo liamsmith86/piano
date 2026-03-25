@@ -176,18 +176,22 @@ async function main(): Promise<void> {
     }
   });
 
-  // Initialize audio on first user interaction
+  // Initialize audio on first user interaction (guarded against double-fire)
+  let audioInitStarted = false;
   const initAudio = async () => {
+    if (audioInitStarted) return;
+    audioInitStarted = true;
+    document.removeEventListener('click', initAudio);
+    document.removeEventListener('keydown', initAudio);
     try {
       await app.init();
     } catch (err) {
+      audioInitStarted = false; // allow retry on failure
       console.warn('Audio init deferred:', err);
     }
-    document.removeEventListener('click', initAudio);
-    document.removeEventListener('keydown', initAudio);
   };
-  document.addEventListener('click', initAudio, { once: true });
-  document.addEventListener('keydown', initAudio, { once: true });
+  document.addEventListener('click', initAudio);
+  document.addEventListener('keydown', initAudio);
 
   // Override toolbar play button to use count-in
   toolbar.setOnPlay(async () => {

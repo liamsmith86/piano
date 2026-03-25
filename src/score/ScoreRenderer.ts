@@ -151,11 +151,13 @@ export class ScoreRenderer {
 
   /** Mark notes at the current position as played (green) */
   markNotesPlayed(): void {
-    // Keep references to played notes (don't clear them, let them stay green)
     if (!this.cursor) return;
 
     const gnotes = (this.cursor as any).GNotesUnderCursor?.();
     if (!gnotes) return;
+
+    // Collect elements we're marking green so we can remove them from coloredElements
+    const markedElements = new Set<SVGElement>();
 
     for (const gn of gnotes) {
       try {
@@ -169,10 +171,14 @@ export class ScoreRenderer {
             if (svgPath.getAttribute('stroke') && svgPath.getAttribute('stroke') !== 'none') {
               svgPath.setAttribute('stroke', '#22c55e');
             }
+            markedElements.add(svgPath);
           });
         }
       } catch {}
     }
+
+    // Remove from coloredElements so clearNoteHighlights won't revert the green
+    this.coloredElements = this.coloredElements.filter(({ el }) => !markedElements.has(el));
   }
 
   /** Scroll the container to keep the cursor element visible */

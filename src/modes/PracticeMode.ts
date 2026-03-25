@@ -146,6 +146,9 @@ export class PracticeMode {
       this.wrongCount++;
       this.streak = 0;
       this.wrongNotesList.push(midi);
+      if (this.wrongNotesList.length > 200) {
+        this.wrongNotesList = this.wrongNotesList.slice(-200);
+      }
       this.trackMeasureStat(false);
       this.audio.playNoteOn(midi, 0.3); // Play quietly so user hears what they pressed
       this.virtualKeyboard?.markWrong(midi);
