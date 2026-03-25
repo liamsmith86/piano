@@ -95,6 +95,7 @@ export class PracticeMode {
     this.active = false;
     this.clearAutoAdvanceTimer();
     this.inputManager.removeListener(this.inputHandler);
+    this.renderer.clearNoteHighlights();
     this.renderer.cursorHide();
     this.virtualKeyboard?.highlightKeys([]);
   }
@@ -127,6 +128,8 @@ export class PracticeMode {
           this.bestStreak = this.streak;
         }
         this.trackMeasureStat(true);
+        // Mark the current notes green before advancing
+        this.renderer.markNotesPlayed();
         this.advanceCursor();
       }
     } else {
@@ -216,6 +219,8 @@ export class PracticeMode {
 
   private highlightExpected(): void {
     this.virtualKeyboard?.highlightKeys(this.expectedMidis);
+    // Highlight noteheads at current cursor position in blue
+    this.renderer.highlightCurrentNotes('#3b82f6');
   }
 
   private trackMeasureStat(correct: boolean): void {

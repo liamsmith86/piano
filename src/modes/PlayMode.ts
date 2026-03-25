@@ -68,6 +68,7 @@ export class PlayMode {
 
   stop(): void {
     this.audio.stop();
+    this.renderer.clearNoteHighlights();
     this.renderer.cursorReset();
     this.currentIndex = 0;
     this.state = 'stopped';
@@ -75,11 +76,15 @@ export class PlayMode {
   }
 
   private onCursorAdvance(index: number): void {
+    // Mark previous notes as played (green)
+    this.renderer.markNotesPlayed();
     // Advance cursor to match timeline index
     while (this.currentIndex < index) {
       this.renderer.cursorNext();
       this.currentIndex++;
     }
+    // Highlight current notes (blue)
+    this.renderer.highlightCurrentNotes('#3b82f6');
     this.events.emit('cursorAdvanced', { from: this.currentIndex - 1, to: this.currentIndex });
   }
 

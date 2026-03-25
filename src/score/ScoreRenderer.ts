@@ -97,9 +97,78 @@ export class ScoreRenderer {
   }
 
   applyHandColoring(): void {
-    // Use CSS-based approach: add class to container to dim inactive staff
     this.container.classList.remove('hand-both', 'hand-left', 'hand-right');
     this.container.classList.add(`hand-${this.currentHand}`);
+  }
+
+  // --- Note coloring for practice/play mode ---
+
+  private coloredElements: { el: SVGElement; origFill: string; origStroke: string }[] = [];
+
+  /** Color the noteheads at the current cursor position */
+  highlightCurrentNotes(color: string): void {
+    this.clearNoteHighlights();
+    if (!this.cursor) return;
+
+    const gnotes = (this.cursor as any).GNotesUnderCursor?.();
+    if (!gnotes) return;
+
+    for (const gn of gnotes) {
+      try {
+        const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
+        if (svgEl) {
+          svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
+            const svgPath = el as SVGElement;
+            this.coloredElements.push({
+              el: svgPath,
+              origFill: svgPath.getAttribute('fill') ?? '',
+              origStroke: svgPath.getAttribute('stroke') ?? '',
+            });
+            if (svgPath.getAttribute('fill') && svgPath.getAttribute('fill') !== 'none') {
+              svgPath.setAttribute('fill', color);
+            }
+            if (svgPath.getAttribute('stroke') && svgPath.getAttribute('stroke') !== 'none') {
+              svgPath.setAttribute('stroke', color);
+            }
+          });
+        }
+      } catch {}
+    }
+  }
+
+  /** Mark notes at the current position as played (green) */
+  markNotesPlayed(): void {
+    // Keep references to played notes (don't clear them, let them stay green)
+    if (!this.cursor) return;
+
+    const gnotes = (this.cursor as any).GNotesUnderCursor?.();
+    if (!gnotes) return;
+
+    for (const gn of gnotes) {
+      try {
+        const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
+        if (svgEl) {
+          svgEl.querySelectorAll('path, circle, ellipse').forEach((el: Element) => {
+            const svgPath = el as SVGElement;
+            if (svgPath.getAttribute('fill') && svgPath.getAttribute('fill') !== 'none') {
+              svgPath.setAttribute('fill', '#22c55e');
+            }
+            if (svgPath.getAttribute('stroke') && svgPath.getAttribute('stroke') !== 'none') {
+              svgPath.setAttribute('stroke', '#22c55e');
+            }
+          });
+        }
+      } catch {}
+    }
+  }
+
+  /** Clear note color highlights (restore original colors) */
+  clearNoteHighlights(): void {
+    for (const { el, origFill, origStroke } of this.coloredElements) {
+      if (origFill) el.setAttribute('fill', origFill);
+      if (origStroke) el.setAttribute('stroke', origStroke);
+    }
+    this.coloredElements = [];
   }
 
   setHand(hand: HandSelection): void {
