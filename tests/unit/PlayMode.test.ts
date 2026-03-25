@@ -162,7 +162,8 @@ describe('PlayMode', () => {
     expect(renderer.cursorNext).toHaveBeenCalledTimes(3);
     expect(renderer.highlightCurrentNotes).toHaveBeenCalledWith('#3b82f6');
     expect(renderer.scrollToCursor).toHaveBeenCalled();
-    expect(pm.getCurrentIndex()).toBe(3);
+    // getCurrentIndex returns timeline position (1 after first advance)
+    expect(pm.getCurrentIndex()).toBe(1);
   });
 
   it('completion callback emits songEnd and resets state', async () => {
@@ -196,6 +197,6 @@ describe('PlayMode', () => {
     const onCursorAdvance = schedulCall[2];
 
     onCursorAdvance(10);
-    expect(pm.getProgress()).toBe(10 / 20); // 10 out of 20 events
+    expect(pm.getProgress()).toBe(1 / 20); // first advance = position 1 out of 20
   });
 });

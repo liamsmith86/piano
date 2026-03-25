@@ -10,7 +10,8 @@ export class PlayMode {
   private analyzer: ScoreAnalyzer;
   private events: EventEmitter;
   private state: PlaybackState = 'stopped';
-  private currentIndex = 0;
+  private currentIndex = 0;       // OSMD cursor step (for cursor sync)
+  private timelinePosition = 0;   // position in timeline array (for progress)
   private timeline: NoteEvent[] = [];
   private hand: HandSelection = 'both';
 
@@ -44,6 +45,7 @@ export class PlayMode {
     this.renderer.cursorReset();
     this.renderer.cursorShow();
     this.currentIndex = 0;
+    this.timelinePosition = 0;
 
     this.timeline = this.analyzer.getTimeline();
 
@@ -71,19 +73,22 @@ export class PlayMode {
     this.renderer.clearNoteHighlights();
     this.renderer.cursorReset();
     this.currentIndex = 0;
+    this.timelinePosition = 0;
     this.state = 'stopped';
     this.events.emit('playbackStateChanged', { state: 'stopped' });
   }
 
-  private onCursorAdvance(index: number): void {
+  private onCursorAdvance(eventIndex: number): void {
     const prevIndex = this.currentIndex;
     // Mark previous notes as played (green)
     this.renderer.markNotesPlayed();
-    // Advance cursor to match timeline index
-    while (this.currentIndex < index) {
+    // Advance OSMD cursor to match the event's cursor step position
+    while (this.currentIndex < eventIndex) {
       this.renderer.cursorNext();
       this.currentIndex++;
     }
+    // Track timeline array position for progress calculation
+    this.timelinePosition++;
     // Highlight current notes (blue) and scroll to keep visible
     this.renderer.highlightCurrentNotes('#3b82f6');
     this.renderer.scrollToCursor();
@@ -122,12 +127,12 @@ export class PlayMode {
   }
 
   getCurrentIndex(): number {
-    return this.currentIndex;
+    return this.timelinePosition;
   }
 
   getProgress(): number {
     if (this.timeline.length === 0) return 0;
-    return this.currentIndex / this.timeline.length;
+    return Math.min(1, this.timelinePosition / this.timeline.length);
   }
 
   seekToMeasure(measure: number): void {
