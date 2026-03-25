@@ -511,6 +511,16 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
   z-index: 10;
 }
 
+/* Pulse the OSMD cursor in practice mode to draw attention */
+#score-container.practice-active img[class*="cursor"] {
+  animation: cursorPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cursorPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
 /* ===== Note Display ===== */
 .note-display {
   display: flex;

@@ -77,6 +77,7 @@ async function main(): Promise<void> {
       countIn.hide();
     }
     await app.startPractice();
+    scoreContainer.classList.add('practice-active');
     updateNoteDisplay();
   };
 
@@ -132,10 +133,16 @@ async function main(): Promise<void> {
   };
 
   app.on('cursorAdvanced', updateNoteDisplay);
-  app.on('modeChanged', updateNoteDisplay);
+  app.on('modeChanged', ({ mode }) => {
+    updateNoteDisplay();
+    if (mode !== 'practice') {
+      scoreContainer.classList.remove('practice-active');
+    }
+  });
 
   app.on('songEnd', ({ stats }) => {
     noteDisplay.hide();
+    scoreContainer.classList.remove('practice-active');
     if (app.getMode() === 'practice') {
       practiceComplete.show(stats);
 
