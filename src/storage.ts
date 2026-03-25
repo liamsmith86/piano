@@ -31,8 +31,8 @@ export async function saveUploadedSong(id: string, title: string, data: ArrayBuf
     const tx = db.transaction(SONGS_STORE, 'readwrite');
     const store = tx.objectStore(SONGS_STORE);
     store.put({ id, title, data, uploadedAt: Date.now() } satisfies StoredSong);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
 
@@ -44,6 +44,7 @@ export async function getUploadedSongs(): Promise<{ info: SongInfo; data: ArrayB
     const request = store.getAll();
     request.onsuccess = () => {
       const stored: StoredSong[] = request.result;
+      db.close();
       resolve(
         stored.map(s => ({
           info: {
@@ -56,7 +57,7 @@ export async function getUploadedSongs(): Promise<{ info: SongInfo; data: ArrayB
         }))
       );
     };
-    request.onerror = () => reject(request.error);
+    request.onerror = () => { db.close(); reject(request.error); };
   });
 }
 
@@ -66,8 +67,8 @@ export async function deleteUploadedSong(id: string): Promise<void> {
     const tx = db.transaction(SONGS_STORE, 'readwrite');
     const store = tx.objectStore(SONGS_STORE);
     store.delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
 
@@ -79,8 +80,9 @@ export async function getUploadedSongData(id: string): Promise<ArrayBuffer | nul
     const request = store.get(id);
     request.onsuccess = () => {
       const stored: StoredSong | undefined = request.result;
+      db.close();
       resolve(stored?.data ?? null);
     };
-    request.onerror = () => reject(request.error);
+    request.onerror = () => { db.close(); reject(request.error); };
   });
 }

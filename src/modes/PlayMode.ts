@@ -76,6 +76,7 @@ export class PlayMode {
   }
 
   private onCursorAdvance(index: number): void {
+    const prevIndex = this.currentIndex;
     // Mark previous notes as played (green)
     this.renderer.markNotesPlayed();
     // Advance cursor to match timeline index
@@ -86,7 +87,7 @@ export class PlayMode {
     // Highlight current notes (blue) and scroll to keep visible
     this.renderer.highlightCurrentNotes('#3b82f6');
     this.renderer.scrollToCursor();
-    this.events.emit('cursorAdvanced', { from: this.currentIndex - 1, to: this.currentIndex });
+    this.events.emit('cursorAdvanced', { from: prevIndex, to: this.currentIndex });
   }
 
   private onComplete(): void {

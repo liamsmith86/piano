@@ -13,9 +13,16 @@ export class AudioEngine {
   private _tempoScale: number = 1.0;
   private metronomeEnabled = false;
   private metronomeInterval: number | null = null;
+  private initPromise: Promise<void> | null = null;
 
   async init(): Promise<void> {
     if (this.isReady) return;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this.doInit();
+    return this.initPromise;
+  }
+
+  private async doInit(): Promise<void> {
 
     await Tone.start();
 
@@ -175,6 +182,7 @@ export class AudioEngine {
   setTempo(bpm: number): void {
     this._tempo = bpm;
     Tone.getTransport().bpm.value = bpm * this._tempoScale;
+    if (this.metronomeEnabled) this.startMetronome();
   }
 
   getTempo(): number {
@@ -184,6 +192,7 @@ export class AudioEngine {
   setTempoScale(scale: number): void {
     this._tempoScale = Math.max(0.25, Math.min(2.0, scale));
     Tone.getTransport().bpm.value = this._tempo * this._tempoScale;
+    if (this.metronomeEnabled) this.startMetronome();
   }
 
   getTempoScale(): number {
@@ -193,7 +202,7 @@ export class AudioEngine {
   startMetronome(bpm?: number): void {
     this.stopMetronome();
     this.metronomeEnabled = true;
-    const tempo = bpm ?? this._tempo;
+    const tempo = bpm ?? (this._tempo * this._tempoScale);
     const interval = 60 / tempo;
 
     let beat = 0;

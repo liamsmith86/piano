@@ -15,6 +15,18 @@ export class ScoreRenderer {
   }
 
   async load(source: string | ArrayBuffer): Promise<void> {
+    // Clean up previous instance to prevent memory leaks
+    this.clearNoteHighlights();
+    this.wrongNoteOverlay?.remove();
+    this.wrongNoteOverlay = null;
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers.clear();
+    if (this.osmd) {
+      this.osmd.clear();
+      this.osmd = null;
+      this.cursor = null;
+    }
+
     // Ensure container is visible for OSMD to calculate dimensions
     this.container.style.display = 'block';
     if (this.container.offsetWidth === 0) {
@@ -104,7 +116,7 @@ export class ScoreRenderer {
 
   // --- Note coloring for practice/play mode ---
 
-  private coloredElements: { el: SVGElement; origFill: string; origStroke: string }[] = [];
+  private coloredElements: { el: SVGElement; origFill: string | null; origStroke: string | null }[] = [];
 
   /** Color the noteheads at the current cursor position */
   highlightCurrentNotes(color: string): void {
@@ -122,8 +134,8 @@ export class ScoreRenderer {
             const svgPath = el as SVGElement;
             this.coloredElements.push({
               el: svgPath,
-              origFill: svgPath.getAttribute('fill') ?? '',
-              origStroke: svgPath.getAttribute('stroke') ?? '',
+              origFill: svgPath.getAttribute('fill'),
+              origStroke: svgPath.getAttribute('stroke'),
             });
             if (svgPath.getAttribute('fill') && svgPath.getAttribute('fill') !== 'none') {
               svgPath.setAttribute('fill', color);
@@ -188,8 +200,10 @@ export class ScoreRenderer {
   /** Clear note color highlights (restore original colors) */
   clearNoteHighlights(): void {
     for (const { el, origFill, origStroke } of this.coloredElements) {
-      if (origFill) el.setAttribute('fill', origFill);
-      if (origStroke) el.setAttribute('stroke', origStroke);
+      if (origFill === null) el.removeAttribute('fill');
+      else el.setAttribute('fill', origFill);
+      if (origStroke === null) el.removeAttribute('stroke');
+      else el.setAttribute('stroke', origStroke);
     }
     this.coloredElements = [];
   }
@@ -320,7 +334,7 @@ export class ScoreRenderer {
     if (!this.cursor?.cursorElement) return 0;
     const rect = this.cursor.cursorElement.getBoundingClientRect();
     const containerRect = this.container.getBoundingClientRect();
-    return rect.left - containerRect.left + rect.width / 2;
+    return rect.left - containerRect.left + this.container.scrollLeft + rect.width / 2;
   }
 
   getStaffYPosition(staff: 1 | 2, midiNote: number): number {
@@ -340,7 +354,7 @@ export class ScoreRenderer {
     const noteDiatonic = chromaticToDiatonic[midiNote % 12];
     const stepsFromRef = (noteOctave - refOctave) * 7 + (noteDiatonic - refDiatonic);
 
-    const cursorCenterY = cursorRect.top - containerRect.top + cursorRect.height * (staff === 1 ? 0.3 : 0.7);
+    const cursorCenterY = cursorRect.top - containerRect.top + this.container.scrollTop + cursorRect.height * (staff === 1 ? 0.3 : 0.7);
     return cursorCenterY - stepsFromRef * (staffLineSpacing / 2);
   }
 

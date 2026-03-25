@@ -24,8 +24,9 @@ export class PracticeMode {
   private loopStart: number | null = null;
   private loopEnd: number | null = null;
   private loopEnabled = false;
-  private autoAdvanceTimeout: number = 0; // 0 = disabled, else ms
+  private autoAdvanceTimeout: number = 0;
   private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+  private noteOffTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private hitNotes = new Set<number>();
   private expectedMidis: number[] = [];
@@ -79,6 +80,7 @@ export class PracticeMode {
     this.wrongCount = 0;
     this.wrongNotesList = [];
     this.measureStatsMap.clear();
+    this.lastSyncedOsmdIndex = -1;
     this.streak = 0;
     this.bestStreak = 0;
     this.startTime = Date.now();
@@ -99,6 +101,8 @@ export class PracticeMode {
   stop(): void {
     this.active = false;
     this.clearAutoAdvanceTimer();
+    for (const id of this.noteOffTimers) clearTimeout(id);
+    this.noteOffTimers.clear();
     this.inputManager.removeListener(this.inputHandler);
     this.renderer.clearNoteHighlights();
     this.renderer.cursorHide();
@@ -157,9 +161,11 @@ export class PracticeMode {
     }
 
     // Release note after a short delay (for practice feedback)
-    setTimeout(() => {
+    const timerId = setTimeout(() => {
       this.audio.playNoteOff(midi);
+      this.noteOffTimers.delete(timerId);
     }, 300);
+    this.noteOffTimers.add(timerId);
   }
 
   private advanceCursor(): void {
@@ -202,17 +208,29 @@ export class PracticeMode {
     this.events.emit('cursorAdvanced', { from: prevIndex, to: this.cursorIndex });
   }
 
+  private lastSyncedOsmdIndex = -1;
+
   private syncCursorToIndex(): void {
-    // OSMD cursor steps through ALL events (both hands), so we need to
-    // advance it to match the current filtered index
     const targetEvent = this.filteredTimeline[this.cursorIndex];
     if (!targetEvent) return;
 
-    this.renderer.cursorReset();
-    // Advance cursor to match the target event's original index
-    for (let i = 0; i < targetEvent.index; i++) {
-      this.renderer.cursorNext();
+    const targetOsmdIndex = targetEvent.index;
+
+    if (this.lastSyncedOsmdIndex >= 0 && targetOsmdIndex > this.lastSyncedOsmdIndex) {
+      // Incremental advance from current position (O(delta) instead of O(n))
+      const steps = targetOsmdIndex - this.lastSyncedOsmdIndex;
+      for (let i = 0; i < steps; i++) {
+        this.renderer.cursorNext();
+      }
+    } else {
+      // Full reset needed (first note, loop back, or hand switch)
+      this.renderer.cursorReset();
+      for (let i = 0; i < targetOsmdIndex; i++) {
+        this.renderer.cursorNext();
+      }
     }
+
+    this.lastSyncedOsmdIndex = targetOsmdIndex;
   }
 
   private updateExpectedNotes(): void {
@@ -244,7 +262,8 @@ export class PracticeMode {
   }
 
   private showWrongNoteOnStaff(wrongMidi: number): void {
-    const staff = this.hand === 'left' ? 2 : 1;
+    // Determine staff: in both-hands mode, use middle C (60) as the divider
+    const staff: 1 | 2 = this.hand === 'left' ? 2 : this.hand === 'right' ? 1 : (wrongMidi >= 60 ? 1 : 2);
     const x = this.renderer.getCursorXPosition();
     const y = this.renderer.getStaffYPosition(staff as 1 | 2, wrongMidi);
     if (x > 0 && y > 0) {
