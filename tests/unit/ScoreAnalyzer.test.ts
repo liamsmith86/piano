@@ -269,4 +269,122 @@ describe('ScoreAnalyzer', () => {
     expect(leftHand[0].index).toBe(1);
     expect(leftHand[1].index).toBe(3);
   });
+
+  it('handles multi-tempo pieces correctly', () => {
+    // Create a mock with tempo changes between measures
+    let cursorPos = 0;
+    let beatPos = 0;
+
+    const noteData = [
+      [{ midi: 60, staff: 1, beats: 1, measure: 0 }],
+      [{ midi: 64, staff: 1, beats: 1, measure: 1 }],
+    ];
+
+    const mockCursor = {
+      reset: () => { cursorPos = 0; beatPos = 0; },
+      next: () => { cursorPos++; beatPos += 0.25; },
+      Iterator: {
+        get EndReached() { return cursorPos >= noteData.length; },
+        get currentTimeStamp() { return { RealValue: beatPos }; },
+        get CurrentMeasureIndex() { return noteData[cursorPos]?.[0]?.measure ?? 0; },
+        get CurrentVoiceEntries() {
+          if (cursorPos >= noteData.length) return [];
+          return noteData[cursorPos].map(note => ({
+            Notes: [{
+              isRest: () => false,
+              halfTone: note.midi - 12,
+              Length: { RealValue: note.beats / 4 },
+              ParentStaffEntry: { ParentStaff: { idInMusicSheet: 0 } },
+              NoteTie: undefined,
+            }],
+            ParentVoice: { VoiceId: 1 },
+          }));
+        },
+      },
+    };
+
+    const multiTempoOsmd = {
+      cursors: [mockCursor],
+      sheet: {
+        HasBPMInfo: true,
+        SourceMeasures: [
+          { TempoInBPM: 60, Duration: { RealValue: 1 } },   // Measure 1: 60 BPM
+          { TempoInBPM: 120, Duration: { RealValue: 1 } },  // Measure 2: 120 BPM
+        ],
+      },
+    } as any;
+
+    const analyzer = new ScoreAnalyzer();
+    analyzer.analyze(multiTempoOsmd);
+
+    expect(analyzer.getDefaultTempo()).toBe(60);
+
+    const tempoMap = analyzer.getTempoMap();
+    expect(tempoMap.length).toBe(2);
+    expect(tempoMap[0].bpm).toBe(60);
+    expect(tempoMap[1].bpm).toBe(120);
+
+    // First note at beat 0 → 0 seconds
+    const t = analyzer.getTimeline();
+    expect(t[0].timestamp).toBe(0);
+    // Second note at beat 1 → should be 1 second (at 60 BPM, 1 beat = 1 second)
+    expect(t[1].timestamp).toBeCloseTo(1, 1);
+  });
+
+  it('handles song with no BPM info (default tempo)', () => {
+    let cursorPos = 0;
+    const mockOsmd = {
+      cursors: [{
+        reset: () => { cursorPos = 0; },
+        next: () => { cursorPos++; },
+        Iterator: {
+          get EndReached() { return cursorPos >= 1; },
+          get currentTimeStamp() { return { RealValue: 0 }; },
+          get CurrentMeasureIndex() { return 0; },
+          get CurrentVoiceEntries() {
+            if (cursorPos >= 1) return [];
+            return [{
+              Notes: [{
+                isRest: () => false,
+                halfTone: 48,
+                Length: { RealValue: 0.25 },
+                ParentStaffEntry: { ParentStaff: { idInMusicSheet: 0 } },
+                NoteTie: undefined,
+              }],
+              ParentVoice: { VoiceId: 1 },
+            }];
+          },
+        },
+      }],
+      sheet: {
+        HasBPMInfo: false,
+        SourceMeasures: [
+          { TempoInBPM: 0, Duration: { RealValue: 1 } },
+        ],
+      },
+    } as any;
+
+    const analyzer = new ScoreAnalyzer();
+    analyzer.analyze(mockOsmd);
+
+    // Should fall back to default 120 BPM
+    expect(analyzer.getDefaultTempo()).toBe(120);
+    expect(analyzer.getTempoMap()).toHaveLength(1);
+    expect(analyzer.getTempoMap()[0].bpm).toBe(120);
+  });
+
+  it('getTotalDuration returns 0 for empty timeline', () => {
+    const analyzer = new ScoreAnalyzer();
+    expect(analyzer.getTotalDuration()).toBe(0);
+  });
+
+  it('getTotalDuration handles empty notes array', () => {
+    const osmd = createMockOSMD([
+      [{ midi: 60, staff: 1, beats: 1, measure: 0 }],
+    ]);
+    const analyzer = new ScoreAnalyzer();
+    analyzer.analyze(osmd);
+    // Should not throw
+    expect(analyzer.getTotalDuration()).toBeGreaterThan(0);
+  });
 });
