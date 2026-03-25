@@ -57,8 +57,8 @@ export class AudioEngine {
       volume: -15,
     }).toDestination();
 
-    // Default to muted — user adjusts with volume slider
-    this.sampler.volume.value = -Infinity;
+    // Default to 50% volume (-20dB)
+    this.sampler.volume.value = -20;
 
     this.isReady = true;
   }

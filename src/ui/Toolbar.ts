@@ -105,7 +105,7 @@ export class Toolbar {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
           </svg>
-          <input type="range" class="tb-volume-slider" min="0" max="100" value="0" step="5" />
+          <input type="range" class="tb-volume-slider" min="0" max="100" value="50" step="5" />
         </div>
 
         <div class="tb-zoom" title="Score zoom">
