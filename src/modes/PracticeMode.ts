@@ -28,7 +28,7 @@ export class PracticeMode {
   private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
   private noteOffTimers = new Set<ReturnType<typeof setTimeout>>();
 
-  private hitNotes = new Set<number>();
+  private hitCount = new Map<number, number>(); // midi → count of hits
   private expectedMidis: number[] = [];
 
   // Stats
@@ -75,7 +75,7 @@ export class PracticeMode {
     this.active = true;
     this.updateFilteredTimeline();
     this.cursorIndex = 0;
-    this.hitNotes.clear();
+    this.hitCount.clear();
     this.correctCount = 0;
     this.wrongCount = 0;
     this.wrongNotesList = [];
@@ -113,11 +113,15 @@ export class PracticeMode {
     if (!this.active || event.type !== 'noteOn') return;
 
     const midi = event.midiNumber;
-    const isExpected = this.expectedMidis.includes(midi);
+
+    // Count how many times this midi is expected vs how many times hit
+    const expectedCount = this.expectedMidis.filter(m => m === midi).length;
+    const currentHits = this.hitCount.get(midi) ?? 0;
+    const isExpected = currentHits < expectedCount;
 
     if (isExpected) {
       // Correct note
-      this.hitNotes.add(midi);
+      this.hitCount.set(midi, currentHits + 1);
       this.audio.playNoteOn(midi, event.velocity || 0.8);
       this.virtualKeyboard?.markCorrect(midi);
       this.events.emit('noteCorrect', {
@@ -128,8 +132,11 @@ export class PracticeMode {
       // Reset auto-advance timer on any correct input
       this.startAutoAdvanceTimer();
 
-      // Check if all notes in this chord are hit
-      const allHit = this.expectedMidis.every(m => this.hitNotes.has(m));
+      // Check if all notes in this chord are hit (count-aware)
+      const allHit = this.expectedMidis.every(m => {
+        const needed = this.expectedMidis.filter(x => x === m).length;
+        return (this.hitCount.get(m) ?? 0) >= needed;
+      });
       if (allHit) {
         this.correctCount++;
         this.streak++;
@@ -179,7 +186,7 @@ export class PracticeMode {
       if (this.loopEnabled && this.loopStart !== null) {
         // Loop back to start of range
         this.cursorIndex = 0;
-        this.hitNotes.clear();
+        this.hitCount.clear();
         this.syncCursorToIndex();
         this.updateExpectedNotes();
         this.highlightExpected();
@@ -195,7 +202,7 @@ export class PracticeMode {
       return;
     }
 
-    this.hitNotes.clear();
+    this.hitCount.clear();
 
     // Play accompaniment for inactive hand if enabled
     if (this.accompaniment && this.hand !== 'both') {
@@ -311,7 +318,7 @@ export class PracticeMode {
       this.totalNotes = this.filteredTimeline.length;
       // Reset to beginning with new filter
       this.cursorIndex = 0;
-      this.hitNotes.clear();
+      this.hitCount.clear();
       this.syncCursorToIndex();
       this.updateExpectedNotes();
       this.highlightExpected();
@@ -330,7 +337,7 @@ export class PracticeMode {
     return {
       cursorIndex: this.cursorIndex,
       expectedNotes: [...this.expectedMidis],
-      hitNotes: [...this.hitNotes],
+      hitNotes: [...this.hitCount.keys()],
       wrongNotes: [...this.wrongNotesList],
       totalNotes: this.totalNotes,
       correctCount: this.correctCount,
@@ -381,7 +388,7 @@ export class PracticeMode {
       this.streak = 0;
       this.trackMeasureStat(false);
       // Advance cursor
-      this.hitNotes.clear();
+      this.hitCount.clear();
       this.advanceCursor();
     }, this.autoAdvanceTimeout);
   }
@@ -419,7 +426,7 @@ export class PracticeMode {
       this.measureStatsMap.clear();
       this.streak = 0;
       this.cursorIndex = 0;
-      this.hitNotes.clear();
+      this.hitCount.clear();
       this.syncCursorToIndex();
       this.updateExpectedNotes();
       this.highlightExpected();
