@@ -13,14 +13,31 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
       - name: Install dependencies
         run: bun install
 
       - name: Type check
         run: bun x tsc --noEmit
 
+      - name: Unit tests
+        run: bun run test
+
       - name: Build
         run: bun run build
+
+      - name: Verify no personal songs in build
+        run: |
+          if [ -d "dist/songs/personal" ]; then
+            echo "ERROR: dist/songs/personal/ exists — copyrighted content must not be deployed"
+            exit 1
+          fi
 
       - name: Setup SSH
         run: |
@@ -35,3 +52,7 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_PORT }}" \
             dist/ \
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/piano/dist/
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
