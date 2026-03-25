@@ -20,6 +20,7 @@ export class VirtualKeyboard {
   private showNoteNames = true;
   private highlightedNotes = new Set<number>();
   private activeNotes = new Set<number>();
+  private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(
     container: HTMLElement,
@@ -166,16 +167,20 @@ export class VirtualKeyboard {
 
   markCorrect(midi: number): void {
     this.keyElements.get(midi)?.classList.add('vk-correct');
-    setTimeout(() => {
+    const id = setTimeout(() => {
       this.keyElements.get(midi)?.classList.remove('vk-correct');
+      this.pendingTimers.delete(id);
     }, 500);
+    this.pendingTimers.add(id);
   }
 
   markWrong(midi: number): void {
     this.keyElements.get(midi)?.classList.add('vk-wrong');
-    setTimeout(() => {
+    const id = setTimeout(() => {
       this.keyElements.get(midi)?.classList.remove('vk-wrong');
+      this.pendingTimers.delete(id);
     }, 500);
+    this.pendingTimers.add(id);
   }
 
   setShowNoteNames(show: boolean): void {
@@ -213,6 +218,8 @@ export class VirtualKeyboard {
   }
 
   destroy(): void {
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers.clear();
     this.container.innerHTML = '';
     this.keyElements.clear();
     this.highlightedNotes.clear();

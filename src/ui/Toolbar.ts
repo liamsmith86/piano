@@ -37,39 +37,39 @@ export class Toolbar {
 
     this.container.innerHTML = `
       <div class="tb-row tb-main">
-        <button class="tb-btn tb-library-btn" title="Song Library">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="tb-btn tb-library-btn" title="Song Library" aria-label="Open song library">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
           </svg>
         </button>
-        <span class="tb-song-title">Select a song to begin</span>
+        <span class="tb-song-title" aria-live="polite">Select a song to begin</span>
         <div class="tb-spacer"></div>
-        <div class="tb-mode-toggle">
-          <button class="tb-mode-btn active" data-mode="play">Play</button>
-          <button class="tb-mode-btn" data-mode="practice">Practice</button>
+        <div class="tb-mode-toggle" role="group" aria-label="Mode selection">
+          <button class="tb-mode-btn active" data-mode="play" aria-pressed="true">Play</button>
+          <button class="tb-mode-btn" data-mode="practice" aria-pressed="false">Practice</button>
         </div>
       </div>
 
       <div class="tb-row tb-controls">
         <div class="tb-transport">
-          <button class="tb-btn tb-play-btn" title="Play / Pause">
+          <button class="tb-btn tb-play-btn" title="Play / Pause" aria-label="Play or pause">
             <svg class="icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             <svg class="icon-pause" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           </button>
-          <button class="tb-btn tb-stop-btn" title="Stop">
+          <button class="tb-btn tb-stop-btn" title="Stop" aria-label="Stop playback">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
           </button>
-          <button class="tb-btn tb-metronome-btn" title="Metronome">
+          <button class="tb-btn tb-metronome-btn" title="Metronome" aria-label="Toggle metronome">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2L8 22h8L12 2z"/><line x1="12" y1="8" x2="16" y2="4"/>
             </svg>
           </button>
         </div>
 
-        <div class="tb-hands">
-          <button class="tb-hand-btn active" data-hand="both">Both</button>
-          <button class="tb-hand-btn" data-hand="right">R</button>
-          <button class="tb-hand-btn" data-hand="left">L</button>
+        <div class="tb-hands" role="group" aria-label="Hand selection">
+          <button class="tb-hand-btn active" data-hand="both" aria-label="Both hands" aria-pressed="true">Both</button>
+          <button class="tb-hand-btn" data-hand="right" aria-label="Right hand only" aria-pressed="false">R</button>
+          <button class="tb-hand-btn" data-hand="left" aria-label="Left hand only" aria-pressed="false">L</button>
         </div>
 
         <div class="tb-accomp-row" style="display:none">

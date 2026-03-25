@@ -67,6 +67,10 @@ export class PianoApp {
   // --- Song Management ---
 
   async loadSong(urlOrFile: string | File): Promise<void> {
+    // Stop any active mode before loading new song
+    this.playMode.stop();
+    this.practiceMode.stop();
+
     if (typeof urlOrFile === 'string') {
       await this.renderer.load(urlOrFile);
 

@@ -61,24 +61,34 @@ async function main(): Promise<void> {
   // Wrap play/practice start with count-in
   const playWithCountIn = async () => {
     if (!app.getLoadedSong()) return;
-    const settings = settingsPanel.getSettings();
-    if (app.audio.ready && settings.countIn) {
-      await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+    try {
+      const settings = settingsPanel.getSettings();
+      if (app.audio.ready && settings.countIn) {
+        await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+        countIn.hide();
+      }
+      await app.play();
+    } catch (err) {
+      console.error('Playback error:', err);
       countIn.hide();
     }
-    await app.play();
   };
 
   const practiceWithCountIn = async () => {
     if (!app.getLoadedSong()) return;
-    const settings = settingsPanel.getSettings();
-    if (app.audio.ready && settings.countIn) {
-      await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+    try {
+      const settings = settingsPanel.getSettings();
+      if (app.audio.ready && settings.countIn) {
+        await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+        countIn.hide();
+      }
+      await app.startPractice();
+      scoreContainer.classList.add('practice-active');
+      updateNoteDisplay();
+    } catch (err) {
+      console.error('Practice start error:', err);
       countIn.hide();
     }
-    await app.startPractice();
-    scoreContainer.classList.add('practice-active');
-    updateNoteDisplay();
   };
 
   practiceComplete.setOnRetry(async () => {
@@ -229,6 +239,11 @@ async function main(): Promise<void> {
         shortcutsHelp.toggle();
         break;
     }
+  });
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    app.destroy();
   });
 }
 

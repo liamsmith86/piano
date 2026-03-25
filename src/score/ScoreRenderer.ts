@@ -8,6 +8,7 @@ export class ScoreRenderer {
   private container: HTMLElement;
   private currentHand: HandSelection = 'both';
   private wrongNoteOverlay: SVGSVGElement | null = null;
+  private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -303,10 +304,16 @@ export class ScoreRenderer {
 
     marker.style.opacity = '1';
     marker.style.transition = 'opacity 0.5s ease-out';
-    setTimeout(() => {
+    const fadeId = setTimeout(() => {
       marker.style.opacity = '0';
-      setTimeout(() => marker.remove(), 500);
+      this.pendingTimers.delete(fadeId);
+      const removeId = setTimeout(() => {
+        marker.remove();
+        this.pendingTimers.delete(removeId);
+      }, 500);
+      this.pendingTimers.add(removeId);
     }, 1000);
+    this.pendingTimers.add(fadeId);
   }
 
   getCursorXPosition(): number {
@@ -342,6 +349,9 @@ export class ScoreRenderer {
   }
 
   destroy(): void {
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers.clear();
+    this.clearNoteHighlights();
     this.wrongNoteOverlay?.remove();
     this.osmd?.clear();
     this.osmd = null;

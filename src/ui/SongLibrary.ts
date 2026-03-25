@@ -3,6 +3,12 @@ import type { SongInfo } from '../types';
 import { PRELOADED_SONGS } from '../types';
 import { getBestAccuracyForSong, getSessionsForSong } from '../progress';
 
+function escapeHtml(str: string): string {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 export class SongLibrary {
   private app: PianoApp;
   private container: HTMLElement;
@@ -143,7 +149,7 @@ export class SongLibrary {
           <circle cx="18" cy="16" r="3"/>
         </svg>
       </div>
-      <span class="sl-card-title">${song.title}</span>
+      <span class="sl-card-title">${escapeHtml(song.title)}</span>
       ${progressHtml}
       ${isUploaded ? '<span class="sl-card-badge">Uploaded</span>' : ''}
     `;
