@@ -241,6 +241,9 @@ export class PracticeMode {
       // Incremental advance from current position (O(delta) instead of O(n))
       const steps = targetOsmdIndex - this.lastSyncedOsmdIndex;
       for (let i = 0; i < steps; i++) {
+        // Mark any notes at intermediate cursor positions green (e.g., notes from
+        // voices/hands not in the filtered timeline that share this cursor step)
+        if (i > 0) this.renderer.markNotesPlayed();
         this.renderer.cursorNext();
       }
     } else {

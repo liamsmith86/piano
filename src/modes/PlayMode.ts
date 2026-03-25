@@ -116,9 +116,11 @@ export class PlayMode {
 
     // Mark previous notes as played (green)
     this.renderer.markNotesPlayed();
-    // Advance OSMD cursor to match the event's cursor step position
+    // Advance OSMD cursor to match the event's cursor step position,
+    // marking intermediate positions green (notes from other voices/hands)
     while (this.currentIndex < eventIndex) {
       this.renderer.cursorNext();
+      this.renderer.markNotesPlayed();
       this.currentIndex++;
     }
     // Track timeline array position for progress calculation
