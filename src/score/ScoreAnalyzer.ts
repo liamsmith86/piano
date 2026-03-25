@@ -28,10 +28,10 @@ export class ScoreAnalyzer {
       const rawBeats = iterator.currentTimeStamp.RealValue * 4;
       const measureNumber = iterator.CurrentMeasureIndex + 1;
 
-      // Detect repeat jump: if raw beats go backwards, add the previous
-      // position to the cumulative offset so timestamps remain monotonic
+      // Detect repeat jump: if raw beats go backwards, bridge the gap
+      // by adding only the difference (not the full absolute position)
       if (rawBeats < prevRawBeats - 0.01) {
-        cumulativeBeatsOffset += prevRawBeats;
+        cumulativeBeatsOffset += (prevRawBeats - rawBeats);
       }
       prevRawBeats = rawBeats;
 
