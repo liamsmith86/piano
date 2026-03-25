@@ -54,6 +54,11 @@ async function main(): Promise<void> {
     app.setAccompaniment(settings.accompaniment);
     app.setAutoAdvance(settings.autoAdvance ? settings.autoAdvanceSeconds * 1000 : 0);
     updateKeyboardVisibility();
+    app.updateOverlays({
+      showNoteNamesOnScore: settings.showNoteNamesOnScore,
+      showAllAccidentals: settings.showAllAccidentals,
+      showFingering: settings.showFingering,
+    });
   };
 
   settingsPanel.setOnChange(applySettings);
@@ -161,6 +166,8 @@ async function main(): Promise<void> {
   app.on('loaded', () => {
     scoreContainer.style.display = 'block';
     libraryContainer.style.display = 'none';
+    // Re-render overlays for newly loaded song
+    applySettings(settingsPanel.getSettings());
   });
 
   // Update note display during practice mode
@@ -225,6 +232,7 @@ async function main(): Promise<void> {
     audioInitStarted = true;
     document.removeEventListener('click', initAudio);
     document.removeEventListener('keydown', initAudio);
+    document.removeEventListener('touchstart', initAudio);
     try {
       await app.init();
     } catch (err) {
@@ -234,6 +242,7 @@ async function main(): Promise<void> {
   };
   document.addEventListener('click', initAudio);
   document.addEventListener('keydown', initAudio);
+  document.addEventListener('touchstart', initAudio, { once: true });
 
   // Override toolbar play button to use count-in
   toolbar.setOnPlay(async () => {

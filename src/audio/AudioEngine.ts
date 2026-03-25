@@ -64,6 +64,14 @@ export class AudioEngine {
     return this.isReady;
   }
 
+  setVolume(db: number): void {
+    if (this.sampler) this.sampler.volume.value = db;
+  }
+
+  getVolume(): number {
+    return this.sampler?.volume.value ?? 0;
+  }
+
   playNote(midiNumber: number, duration: number = 0.5, velocity: number = 0.8): void {
     if (!this.sampler || !this.isReady) return;
     const noteName = midiToNoteName(midiNumber);

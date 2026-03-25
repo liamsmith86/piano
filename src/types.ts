@@ -7,6 +7,7 @@ export interface NoteInfo {
   staff: 1 | 2;      // 1 = treble (right hand), 2 = bass (left hand)
   voice: number;
   tied: boolean;
+  finger?: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface NoteEvent {

@@ -101,6 +101,13 @@ export class Toolbar {
           </label>
         </div>
 
+        <div class="tb-volume" title="Volume">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <input type="range" class="tb-volume-slider" min="0" max="100" value="80" step="5" />
+        </div>
+
         <button class="tb-btn tb-settings-btn" title="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -221,6 +228,15 @@ export class Toolbar {
       updateTempo(pct);
     });
 
+    // Volume slider
+    const volumeSlider = this.container.querySelector('.tb-volume-slider') as HTMLInputElement;
+    volumeSlider.addEventListener('input', () => {
+      const pct = parseInt(volumeSlider.value);
+      // Map 0-100 to -40dB..0dB (logarithmic feel)
+      const db = pct === 0 ? -Infinity : (pct / 100) * 40 - 40;
+      this.app.audio.setVolume(db);
+    });
+
     tempoPresets.forEach(btn => {
       btn.addEventListener('click', () => {
         const speed = parseInt((btn as HTMLButtonElement).dataset.speed!);
@@ -303,12 +319,25 @@ export class Toolbar {
     });
 
     // MIDI connection status
-    this.app.midiInput.setConnectionCallback((connected, name) => {
-      const dot = this.midiStatus.querySelector('.tb-midi-dot')!;
-      const text = this.midiStatus.querySelector('.tb-midi-text')!;
-      dot.classList.toggle('connected', connected);
-      text.textContent = connected ? name : 'No MIDI';
-    });
+    const midiDot = this.midiStatus.querySelector('.tb-midi-dot')!;
+    const midiText = this.midiStatus.querySelector('.tb-midi-text')!;
+
+    if (!navigator.requestMIDIAccess) {
+      // Web MIDI unavailable — could be Safari or insecure context (non-HTTPS LAN)
+      const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (!isSecure) {
+        midiText.textContent = 'MIDI (needs HTTPS)';
+        this.midiStatus.title = 'Web MIDI requires HTTPS or localhost. Access via localhost:5173 for MIDI support.';
+      } else {
+        midiText.textContent = 'MIDI N/A';
+        this.midiStatus.title = 'Web MIDI not supported in this browser (use Chrome/Edge for MIDI keyboard)';
+      }
+    } else {
+      this.app.midiInput.setConnectionCallback((connected, name) => {
+        midiDot.classList.toggle('connected', connected);
+        midiText.textContent = connected ? name : 'No MIDI';
+      });
+    }
   }
 
   private updatePlayButton(): void {

@@ -12,7 +12,8 @@ export default defineConfig({
   reporter: 'list',
   timeout: 30000,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'https://localhost:5173',
+    ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
   },
   projects: [
@@ -23,7 +24,8 @@ export default defineConfig({
   ],
   webServer: {
     command: `${bunPath} run dev`,
-    url: 'http://localhost:5173',
+    url: 'https://localhost:5173',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: !process.env.CI,
     timeout: 15000,
   },

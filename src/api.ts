@@ -14,6 +14,7 @@ import { KeyboardInput } from './input/KeyboardInput';
 import { PlayMode } from './modes/PlayMode';
 import { PracticeMode } from './modes/PracticeMode';
 import { ScoreInteraction } from './score/ScoreInteraction';
+import { FingeringComputer } from './score/FingeringComputer';
 import { saveUploadedSong, getUploadedSongs, getUploadedSongData } from './storage';
 
 export class PianoApp {
@@ -27,6 +28,7 @@ export class PianoApp {
   readonly playMode: PlayMode;
   readonly practiceMode: PracticeMode;
   readonly scoreInteraction: ScoreInteraction;
+  readonly fingeringComputer = new FingeringComputer();
 
   virtualKeyboard: VirtualKeyboard | null = null;
 
@@ -205,6 +207,32 @@ export class PianoApp {
 
   getLoadedSong(): SongInfo | null {
     return this.loadedSong;
+  }
+
+  updateOverlays(settings: { showNoteNamesOnScore: boolean; showAllAccidentals: boolean; showFingering: boolean }): void {
+    const osmd = this.renderer.getOSMD();
+    if (!osmd) return;
+
+    const timeline = this.analyzer.getTimeline();
+
+    if (settings.showFingering && timeline.length > 0) {
+      // Clear existing fingering before recomputing
+      for (const event of timeline) {
+        for (const note of event.notes) {
+          note.finger = undefined;
+        }
+      }
+      const rightEvents = this.analyzer.filterByHand('right');
+      const leftEvents = this.analyzer.filterByHand('left');
+      if (rightEvents.length > 0) this.fingeringComputer.compute(rightEvents, 'right');
+      if (leftEvents.length > 0) this.fingeringComputer.compute(leftEvents, 'left');
+    }
+
+    const overlay = this.renderer.getOverlay();
+    overlay.setShowNoteNames(settings.showNoteNamesOnScore);
+    overlay.setShowAccidentals(settings.showAllAccidentals);
+    overlay.setShowFingering(settings.showFingering);
+    overlay.update(osmd, timeline);
   }
 
   // --- Score State ---

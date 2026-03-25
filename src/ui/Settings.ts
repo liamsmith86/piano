@@ -10,6 +10,9 @@ export interface AppSettings {
   highlightExpectedKeys: boolean;
   autoAdvance: boolean;
   autoAdvanceSeconds: number;
+  showNoteNamesOnScore: boolean;
+  showAllAccidentals: boolean;
+  showFingering: boolean;
 }
 
 const SETTINGS_KEY = 'piano-practice-settings';
@@ -26,6 +29,9 @@ const DEFAULTS: AppSettings = {
   highlightExpectedKeys: true,
   autoAdvance: false,
   autoAdvanceSeconds: 5,
+  showNoteNamesOnScore: false,
+  showAllAccidentals: false,
+  showFingering: false,
 };
 
 export function loadSettings(): AppSettings {
@@ -110,6 +116,27 @@ export class SettingsPanel {
             <div class="sp-toggle-info">
               <span class="sp-toggle-label">Wrong Note Labels</span>
               <span class="sp-toggle-desc">Show the note name when you play a wrong note on the score</span>
+            </div>
+          </label>
+          <label class="sp-toggle">
+            <input type="checkbox" data-setting="showNoteNamesOnScore" ${this.settings.showNoteNamesOnScore ? 'checked' : ''} />
+            <div class="sp-toggle-info">
+              <span class="sp-toggle-label">Note Names on Score</span>
+              <span class="sp-toggle-desc">Display letter names (C, D, E...) on each note in the sheet music</span>
+            </div>
+          </label>
+          <label class="sp-toggle">
+            <input type="checkbox" data-setting="showAllAccidentals" ${this.settings.showAllAccidentals ? 'checked' : ''} />
+            <div class="sp-toggle-info">
+              <span class="sp-toggle-label">Show All Accidentals</span>
+              <span class="sp-toggle-desc">Always show ♯/♭ symbols on altered notes, even when implied by the key signature</span>
+            </div>
+          </label>
+          <label class="sp-toggle">
+            <input type="checkbox" data-setting="showFingering" ${this.settings.showFingering ? 'checked' : ''} />
+            <div class="sp-toggle-info">
+              <span class="sp-toggle-label">Suggested Fingering</span>
+              <span class="sp-toggle-desc">Show optimal finger numbers (1-5) for each note, computed automatically</span>
             </div>
           </label>
         </div>
@@ -198,6 +225,9 @@ export class SettingsPanel {
           wrongNoteLabels: true,
           countIn: true,
           autoScrollKeyboard: true,
+          showNoteNamesOnScore: true,
+          showAllAccidentals: true,
+          showFingering: true,
         };
         break;
       case 'intermediate':
@@ -210,6 +240,9 @@ export class SettingsPanel {
           wrongNoteLabels: true,
           countIn: true,
           autoScrollKeyboard: true,
+          showNoteNamesOnScore: false,
+          showAllAccidentals: true,
+          showFingering: false,
         };
         break;
       case 'advanced':
@@ -222,6 +255,9 @@ export class SettingsPanel {
           wrongNoteLabels: false,
           countIn: false,
           autoScrollKeyboard: false,
+          showNoteNamesOnScore: false,
+          showAllAccidentals: false,
+          showFingering: false,
         };
         break;
     }

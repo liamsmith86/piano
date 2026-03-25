@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -56,11 +57,13 @@ function safeReaddir(dir: string): string[] {
 export default defineConfig({
   plugins: [
     tailwindcss(),
+    basicSsl(),
     songManifestPlugin(),
   ],
   server: {
     host: '0.0.0.0',
     port: 5173,
+    https: true,
   },
   build: {
     chunkSizeWarningLimit: 1600,

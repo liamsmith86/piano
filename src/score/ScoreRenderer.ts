@@ -1,6 +1,7 @@
 import { OpenSheetMusicDisplay, Cursor } from 'opensheetmusicdisplay';
 import type { IOSMDOptions } from 'opensheetmusicdisplay';
 import type { HandSelection } from '../types';
+import { ScoreOverlay } from './ScoreOverlay';
 
 export class ScoreRenderer {
   private osmd: OpenSheetMusicDisplay | null = null;
@@ -9,14 +10,17 @@ export class ScoreRenderer {
   private currentHand: HandSelection = 'both';
   private wrongNoteOverlay: SVGSVGElement | null = null;
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+  private overlay: ScoreOverlay;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.overlay = new ScoreOverlay(container);
   }
 
   async load(source: string | ArrayBuffer): Promise<void> {
     // Clean up previous instance to prevent memory leaks
     this.clearNoteHighlights();
+    this.overlay.clear();
     this.wrongNoteOverlay?.remove();
     this.wrongNoteOverlay = null;
     for (const id of this.pendingTimers) clearTimeout(id);
@@ -339,8 +343,22 @@ export class ScoreRenderer {
     }
   }
 
+  private currentWrongMarker: SVGGElement | null = null;
+  private wrongMarkerTimerId: ReturnType<typeof setTimeout> | null = null;
+
   showWrongNote(x: number, y: number, wrongNoteName?: string): void {
     if (!this.wrongNoteOverlay) return;
+
+    // Remove previous wrong note marker instantly (only one at a time)
+    if (this.currentWrongMarker) {
+      this.currentWrongMarker.remove();
+      this.currentWrongMarker = null;
+    }
+    if (this.wrongMarkerTimerId !== null) {
+      clearTimeout(this.wrongMarkerTimerId);
+      this.pendingTimers.delete(this.wrongMarkerTimerId);
+      this.wrongMarkerTimerId = null;
+    }
 
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     marker.setAttribute('class', 'wrong-note-marker');
@@ -382,19 +400,25 @@ export class ScoreRenderer {
     }
 
     this.wrongNoteOverlay.appendChild(marker);
+    this.currentWrongMarker = marker;
 
+    // Quick fade: show for 400ms, then fade out over 200ms
     marker.style.opacity = '1';
-    marker.style.transition = 'opacity 0.5s ease-out';
+    marker.style.transition = 'opacity 0.2s ease-out';
     const fadeId = setTimeout(() => {
       marker.style.opacity = '0';
       this.pendingTimers.delete(fadeId);
       const removeId = setTimeout(() => {
+        if (this.currentWrongMarker === marker) {
+          this.currentWrongMarker = null;
+        }
         marker.remove();
         this.pendingTimers.delete(removeId);
-      }, 500);
+      }, 200);
       this.pendingTimers.add(removeId);
-    }, 1000);
+    }, 400);
     this.pendingTimers.add(fadeId);
+    this.wrongMarkerTimerId = fadeId;
   }
 
   getCursorXPosition(): number {
@@ -429,10 +453,15 @@ export class ScoreRenderer {
     return (this.osmd as any)?.sheet?.SourceMeasures?.length ?? 0;
   }
 
+  getOverlay(): ScoreOverlay {
+    return this.overlay;
+  }
+
   destroy(): void {
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
     this.clearNoteHighlights();
+    this.overlay.destroy();
     this.wrongNoteOverlay?.remove();
     this.osmd?.clear();
     this.osmd = null;
