@@ -100,6 +100,24 @@ async function main(): Promise<void> {
     await practiceWithCountIn();
   });
 
+  // Score interaction: click-to-jump and drag-to-select
+  app.scoreInteraction.setOnJump((measure) => {
+    // Stop current playback/practice and jump to the clicked measure
+    app.stop();
+    app.renderer.setCursorToMeasure(measure);
+    app.renderer.cursorShow();
+  });
+
+  app.scoreInteraction.setOnSelect((selection) => {
+    if (!selection) return;
+    // Set loop to the selected measure range
+    app.setLoop(selection.startMeasure, selection.endMeasure);
+    // If in practice mode, restart with the new loop
+    if (app.getMode() === 'practice') {
+      app.stopPractice();
+    }
+  });
+
   toolbar.setOnShowLibrary(() => {
     if (library.isVisible()) {
       library.hide();

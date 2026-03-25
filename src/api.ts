@@ -13,6 +13,7 @@ import { VirtualKeyboard } from './input/VirtualKeyboard';
 import { KeyboardInput } from './input/KeyboardInput';
 import { PlayMode } from './modes/PlayMode';
 import { PracticeMode } from './modes/PracticeMode';
+import { ScoreInteraction } from './score/ScoreInteraction';
 import { saveUploadedSong, getUploadedSongs, getUploadedSongData } from './storage';
 
 export class PianoApp {
@@ -25,6 +26,7 @@ export class PianoApp {
   readonly keyboardInput: KeyboardInput;
   readonly playMode: PlayMode;
   readonly practiceMode: PracticeMode;
+  readonly scoreInteraction: ScoreInteraction;
 
   virtualKeyboard: VirtualKeyboard | null = null;
 
@@ -51,6 +53,8 @@ export class PianoApp {
       this.audio, this.renderer, this.analyzer,
       this.inputManager, this.virtualKeyboard, this.events,
     );
+    this.scoreInteraction = new ScoreInteraction(scoreContainer, this.renderer);
+    this.scoreInteraction.init();
 
     // Forward input events
     this.inputManager.addListener((event) => {
@@ -121,6 +125,7 @@ export class PianoApp {
     }
 
     this.renderer.setHand(this.currentHand);
+    this.scoreInteraction.buildMeasureMap();
     this.events.emit('loaded', { songId: this.loadedSong!.id });
   }
 
@@ -155,6 +160,7 @@ export class PianoApp {
         }
       }
       this.renderer.setHand(this.currentHand);
+      this.scoreInteraction.buildMeasureMap();
       if (this.loadedSong) {
         this.events.emit('loaded', { songId: this.loadedSong.id });
       }
@@ -341,6 +347,7 @@ export class PianoApp {
   destroy(): void {
     this.playMode.stop();
     this.practiceMode.stop();
+    this.scoreInteraction.destroy();
     this.audio.destroy();
     this.midiInput.destroy();
     this.keyboardInput.destroy();
