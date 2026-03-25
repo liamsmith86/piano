@@ -11,7 +11,7 @@ export class ScoreRenderer {
   private wrongNoteOverlay: SVGGElement | null = null;
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private overlay: ScoreOverlay;
-  private _zoom: number = 1.5;
+  private _zoom: number = window.innerWidth <= 640 ? 0.75 : 1.5;
 
   constructor(container: HTMLElement) {
     this.container = container;

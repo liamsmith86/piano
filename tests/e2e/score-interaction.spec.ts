@@ -85,7 +85,7 @@ test.describe('Score Interaction: Click-to-Jump', () => {
         await page.waitForTimeout(300);
       }
     }
-    rects = await page.locator('.score-selection-rect').count();
+    rects = await page.locator('.score-selection-rect:visible').count();
     expect(rects).toBe(0);
   });
 });

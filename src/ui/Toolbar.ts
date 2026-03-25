@@ -112,8 +112,8 @@ export class Toolbar {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
           </svg>
-          <input type="range" class="tb-zoom-slider" min="50" max="300" value="150" step="10" />
-          <span class="tb-zoom-label">150%</span>
+          <input type="range" class="tb-zoom-slider" min="50" max="300" value="${Math.round(this.app.renderer.getZoom() * 100)}" step="10" />
+          <span class="tb-zoom-label">${Math.round(this.app.renderer.getZoom() * 100)}%</span>
         </div>
 
         <button class="tb-btn tb-settings-btn" title="Settings">

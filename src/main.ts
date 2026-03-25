@@ -136,7 +136,14 @@ async function main(): Promise<void> {
 
   // Score interaction: click-to-jump and drag-to-select
   app.scoreInteraction.setOnJump((measure) => {
-    // Stop current playback/practice, clear loop, and jump to clicked measure
+    // During play mode playback, seek to the clicked measure instead of stopping
+    if (app.getMode() === 'play' && app.getPlaybackState() === 'playing') {
+      app.clearLoop();
+      app.scoreInteraction.clearSelection();
+      app.playMode.seekToMeasure(measure);
+      return;
+    }
+    // Otherwise (stopped/paused/practice), stop and jump cursor
     app.stop();
     app.clearLoop();
     app.scoreInteraction.clearSelection();
@@ -146,12 +153,9 @@ async function main(): Promise<void> {
 
   app.scoreInteraction.setOnSelect((selection) => {
     if (!selection) return;
-    // Set loop to the selected measure range
+    // Stop current playback/practice before setting loop
+    app.stop();
     app.setLoop(selection.startMeasure, selection.endMeasure);
-    // If in practice mode, restart with the new loop
-    if (app.getMode() === 'practice') {
-      app.stopPractice();
-    }
   });
 
   toolbar.setOnShowLibrary(() => {

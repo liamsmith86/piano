@@ -197,16 +197,21 @@ export class ScoreInteraction {
     return bestMeasure;
   }
 
-  private updateSelectionVisual(startMeasure: number, endMeasure: number): void {
-    // Clear existing highlights
-    this.selectionOverlay.innerHTML = '';
+  // Reusable DOM elements to avoid flicker from constant create/destroy
+  private rectPool: HTMLElement[] = [];
+  private labelEl: HTMLElement | null = null;
+  private activeRects = 0;
 
+  private updateSelectionVisual(startMeasure: number, endMeasure: number): void {
     // Find all measure regions in the range
     const regions = this.measureRegions.filter(
       r => r.measureNumber >= startMeasure && r.measureNumber <= endMeasure
     );
 
-    if (regions.length === 0) return;
+    if (regions.length === 0) {
+      this.hideAllVisuals();
+      return;
+    }
 
     // Group by system line (same top position ± tolerance)
     const systems = new Map<number, MeasureRegion[]>();
@@ -216,37 +221,63 @@ export class ScoreInteraction {
       systems.get(systemKey)!.push(r);
     }
 
-    // Create a highlight rectangle for each system line
+    // Update or create highlight rectangles for each system line
+    let rectIdx = 0;
     for (const [, sysRegions] of systems) {
       const minLeft = Math.min(...sysRegions.map(r => r.left));
       const maxRight = Math.max(...sysRegions.map(r => r.right));
       const minTop = Math.min(...sysRegions.map(r => r.top));
       const maxBottom = Math.max(...sysRegions.map(r => r.bottom));
 
-      const highlight = document.createElement('div');
-      highlight.className = 'score-selection-rect';
-      highlight.style.left = `${minLeft - 4}px`;
-      highlight.style.top = `${minTop - 4}px`;
-      highlight.style.width = `${maxRight - minLeft + 8}px`;
-      highlight.style.height = `${maxBottom - minTop + 8}px`;
-      this.selectionOverlay.appendChild(highlight);
+      let rect = this.rectPool[rectIdx];
+      if (!rect) {
+        rect = document.createElement('div');
+        rect.className = 'score-selection-rect';
+        this.selectionOverlay.appendChild(rect);
+        this.rectPool.push(rect);
+      }
+      rect.style.left = `${minLeft - 4}px`;
+      rect.style.top = `${minTop - 4}px`;
+      rect.style.width = `${maxRight - minLeft + 8}px`;
+      rect.style.height = `${maxBottom - minTop + 8}px`;
+      rect.style.display = '';
+      rectIdx++;
     }
 
-    // Add label
-    if (startMeasure !== endMeasure) {
-      const label = document.createElement('div');
-      label.className = 'score-selection-label';
-      const firstRegion = regions[0];
-      label.style.left = `${firstRegion.left}px`;
-      label.style.top = `${firstRegion.top - 24}px`;
-      label.textContent = `Measures ${startMeasure}–${endMeasure}`;
-      this.selectionOverlay.appendChild(label);
+    // Hide any excess rects from previous frames
+    for (let i = rectIdx; i < this.activeRects; i++) {
+      this.rectPool[i].style.display = 'none';
     }
+    this.activeRects = rectIdx;
+
+    // Update or create label
+    if (startMeasure !== endMeasure) {
+      if (!this.labelEl) {
+        this.labelEl = document.createElement('div');
+        this.labelEl.className = 'score-selection-label';
+        this.selectionOverlay.appendChild(this.labelEl);
+      }
+      const firstRegion = regions[0];
+      this.labelEl.style.left = `${firstRegion.left}px`;
+      this.labelEl.style.top = `${firstRegion.top - 24}px`;
+      this.labelEl.style.display = '';
+      this.labelEl.textContent = `Measures ${startMeasure}–${endMeasure}`;
+    } else if (this.labelEl) {
+      this.labelEl.style.display = 'none';
+    }
+  }
+
+  private hideAllVisuals(): void {
+    for (let i = 0; i < this.activeRects; i++) {
+      this.rectPool[i].style.display = 'none';
+    }
+    this.activeRects = 0;
+    if (this.labelEl) this.labelEl.style.display = 'none';
   }
 
   clearSelection(): void {
     this.currentSelection = null;
-    this.selectionOverlay.innerHTML = '';
+    this.hideAllVisuals();
   }
 
   getSelection(): ScoreSelection | null {

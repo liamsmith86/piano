@@ -181,17 +181,62 @@ export class PlayMode {
     return Math.min(1, this.timelinePosition / this.timeline.length);
   }
 
-  seekToMeasure(measure: number): void {
+  async seekToMeasure(measure: number): Promise<void> {
     const wasPlaying = this.state === 'playing';
-    if (wasPlaying) this.stop();
 
-    this.renderer.setCursorToMeasure(measure);
-    // Find the timeline index for this measure
-    const idx = this.timeline.findIndex(e => e.measureNumber >= measure);
-    this.currentIndex = idx >= 0 ? idx : 0;
+    // Stop current audio scheduling
+    this.audio.stop();
+    this.renderer.clearNoteHighlights();
 
-    if (wasPlaying) {
-      this.start();
+    // Rebuild timeline (respecting loop range)
+    let fullTimeline = this.analyzer.getTimeline();
+    if (this.loopStart !== null && this.loopEnd !== null) {
+      fullTimeline = fullTimeline.filter(
+        e => e.measureNumber >= this.loopStart! && e.measureNumber <= this.loopEnd!
+      );
+    }
+    this.timeline = fullTimeline;
+
+    // Find position in timeline for this measure
+    const seekIdx = this.timeline.findIndex(e => e.measureNumber >= measure);
+    const startFrom = seekIdx >= 0 ? seekIdx : 0;
+
+    // Position cursor
+    if (this.timeline.length > 0 && startFrom < this.timeline.length) {
+      this.renderer.setCursorToMeasure(this.timeline[startFrom].measureNumber);
+      this.currentIndex = this.timeline[startFrom].index;
+    } else {
+      this.renderer.cursorReset();
+      this.currentIndex = 0;
+    }
+    this.renderer.cursorShow();
+    this.timelinePosition = startFrom;
+    this.lastMeasure = 0;
+
+    if (wasPlaying && this.timeline.length > 0 && startFrom < this.timeline.length) {
+      // Schedule playback from the seek position
+      const seekTimeline = this.timeline.slice(startFrom);
+      const startOffset = seekTimeline[0].timestamp;
+      const offsetTimeline = seekTimeline.map(e => ({
+        ...e,
+        timestamp: e.timestamp - startOffset,
+      }));
+
+      this.audio.schedulePlayback(
+        offsetTimeline,
+        this.hand,
+        (index) => this.onCursorAdvance(index),
+        () => this.onComplete(),
+      );
+      this.audio.play();
+      this.state = 'playing';
+      this.events.emit('playbackStateChanged', { state: 'playing' });
+
+      // Highlight current notes
+      this.renderer.highlightCurrentNotes('#3b82f6');
+    } else {
+      this.state = 'stopped';
+      this.events.emit('playbackStateChanged', { state: 'stopped' });
     }
   }
 }
