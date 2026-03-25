@@ -16,7 +16,7 @@ export class ScoreAnalyzer {
     if (!cursor) return [];
 
     cursor.reset();
-    let index = 0;
+    let cursorStep = 0; // counts ALL cursor positions (including rests)
 
     // Track cumulative time to handle repeats (where beat position jumps backwards)
     let prevRawBeats = 0;
@@ -54,7 +54,7 @@ export class ScoreAnalyzer {
             const staff = (staffId === 0 ? 1 : 2) as 1 | 2;
 
             const durationBeats = note.Length.RealValue * 4;
-            const duration = this.beatsToSeconds(durationBeats);
+            const duration = this.durationAtBeat(durationBeats, timestampBeats);
 
             const noteInfo: NoteInfo = {
               midi: midiNumber,
@@ -78,14 +78,14 @@ export class ScoreAnalyzer {
 
       if (notes.length > 0) {
         this.timeline.push({
-          index,
+          index: cursorStep, // use absolute cursor position for cursor sync
           timestamp,
           timestampBeats,
           notes,
           measureNumber,
         });
-        index++;
       }
+      cursorStep++;
 
       cursor.next();
     }
@@ -150,6 +150,16 @@ export class ScoreAnalyzer {
 
     seconds += (remainingBeats / currentBpm) * 60;
     return seconds;
+  }
+
+  /** Convert a duration in beats to seconds using the tempo active at a specific beat position */
+  private durationAtBeat(durationBeats: number, atBeat: number): number {
+    let currentBpm = this.tempoMap[0]?.bpm ?? this.defaultTempo;
+    for (const entry of this.tempoMap) {
+      if (entry.timestamp > atBeat) break;
+      currentBpm = entry.bpm;
+    }
+    return (durationBeats / currentBpm) * 60;
   }
 
   getTimeline(): NoteEvent[] {

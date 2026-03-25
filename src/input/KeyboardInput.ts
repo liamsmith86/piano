@@ -17,7 +17,7 @@ const KEY_MAP: Record<string, number> = {
   'h': 56,  // G#3
   'n': 57,  // A3
   'j': 58,  // A#3
-  'm': 59,  // B3
+  // 'm' removed — conflicts with metronome shortcut
   ',': 60,  // C4 (overlap)
 
   // Upper octave (C4 = 60)
