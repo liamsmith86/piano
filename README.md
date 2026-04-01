@@ -2,6 +2,8 @@
 
 A web app for learning piano from sheet music. Load MusicXML scores, listen to them play back with realistic piano audio, and practice note-by-note with real-time feedback.
 
+Live demo: https://play.everla.st
+
 ## Features
 
 **Learn**
