@@ -9,8 +9,6 @@ function createMockAudio() {
     ready: true,
     init: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn(),
-    playNoteOn: vi.fn(),
-    playNoteOff: vi.fn(),
   } as any;
 }
 

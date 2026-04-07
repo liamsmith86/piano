@@ -80,12 +80,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Update cache with fresh response
           if (response.ok && event.request.method === 'GET') {
+            // Update cache with fresh response
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            return response;
           }
-          return response;
+          // Server error (5xx/4xx) — try cached version before returning error
+          return caches.match(event.request).then((cached) => cached || response);
         })
         .catch(() => caches.match(event.request))
     );

@@ -17,6 +17,7 @@ export class PlayMode {
   private loopStart: number | null = null;
   private loopEnd: number | null = null;
   private lastMeasure = 0;        // for detecting repeats
+  private eventByIndex = new Map<number, NoteEvent>(); // O(1) lookup by cursor step
 
   constructor(
     audio: AudioEngine,
@@ -55,6 +56,7 @@ export class PlayMode {
       );
     }
     this.timeline = fullTimeline;
+    this.buildEventIndex();
 
     // Position cursor at the start of the range
     if (this.timeline.length > 0) {
@@ -108,7 +110,7 @@ export class PlayMode {
 
     // Detect repeat: if current event's measure is before the last played measure,
     // reset green notes so repeat section gets fresh visual feedback
-    const event = this.timeline.find(e => e.index === eventIndex);
+    const event = this.eventByIndex.get(eventIndex);
     if (event && event.measureNumber < this.lastMeasure) {
       this.renderer.resetPlayedNotes();
     }
@@ -196,6 +198,7 @@ export class PlayMode {
       );
     }
     this.timeline = fullTimeline;
+    this.buildEventIndex();
 
     // Find position in timeline for this measure
     const seekIdx = this.timeline.findIndex(e => e.measureNumber >= measure);
@@ -237,6 +240,13 @@ export class PlayMode {
     } else {
       this.state = 'stopped';
       this.events.emit('playbackStateChanged', { state: 'stopped' });
+    }
+  }
+
+  private buildEventIndex(): void {
+    this.eventByIndex.clear();
+    for (const event of this.timeline) {
+      this.eventByIndex.set(event.index, event);
     }
   }
 }

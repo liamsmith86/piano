@@ -23,9 +23,10 @@ export class MidiInput {
       this.midiAccess.onstatechange = (e: Event) => {
         const evt = e as MIDIConnectionEvent;
         const port = evt.port;
-        // On disconnect: release all sustained notes to prevent stuck notes
+        // On disconnect: release all notes (sustained + active) to prevent stuck notes
         if (port?.type === 'input' && port.state === 'disconnected') {
           this.releaseAllNotes();
+          this.inputManager.clearAll();
         }
         this.connectInputs();
       };
@@ -144,6 +145,9 @@ export class MidiInput {
       input.onmidimessage = null;
     }
     this.connectedInputs = [];
-    this.midiAccess = null;
+    if (this.midiAccess) {
+      this.midiAccess.onstatechange = null;
+      this.midiAccess = null;
+    }
   }
 }

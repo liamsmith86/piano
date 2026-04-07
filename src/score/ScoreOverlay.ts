@@ -139,13 +139,17 @@ export class ScoreOverlay {
       svgGroups.set(svg as SVGSVGElement, group);
     }
 
-    // Build a lookup from (midi, staff) → finger for fingering display
+    // Build a lookup from (midi, staff, measure) → finger for fingering display
+    // Use first occurrence only (standard convention for repeated sections)
     const fingerLookup = new Map<string, number>();
     if (this.showFingering && timeline) {
       for (const event of timeline) {
         for (const note of event.notes) {
           if (note.finger) {
-            fingerLookup.set(`${note.midi}:${note.staff}`, note.finger);
+            const key = `${note.midi}:${note.staff}:${event.measureNumber}`;
+            if (!fingerLookup.has(key)) {
+              fingerLookup.set(key, note.finger);
+            }
           }
         }
       }
@@ -366,7 +370,7 @@ export class ScoreOverlay {
     // Feature 3: Fingering numbers — above noteheads (both staves), with circled style
     if (this.showFingering) {
       const midiNumber = (pitch.getHalfTone?.() ?? pitch.halfTone ?? 0) + 12;
-      const key = `${midiNumber}:${staff}`;
+      const key = `${midiNumber}:${staff}:${measureIdx}`;
       const finger = fingerLookup.get(key);
 
       if (finger) {

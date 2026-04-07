@@ -273,9 +273,12 @@ export class ScoreRenderer {
   setZoom(zoom: number): void {
     this._zoom = Math.max(0.5, Math.min(3.0, zoom));
     if (this.osmd) {
+      // Clear stale SVG references before re-render (osmd.render() recreates all SVG elements)
+      this.clearNoteHighlights();
       this.osmd.zoom = this._zoom;
       this.osmd.render();
       this.setupCursor();
+      this.setupWrongNoteOverlay();
       this.applyHandColoring();
     }
   }

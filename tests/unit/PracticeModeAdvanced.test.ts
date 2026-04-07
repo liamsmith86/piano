@@ -9,8 +9,6 @@ function createMockAudio() {
     ready: true,
     init: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn(),
-    playNoteOn: vi.fn(),
-    playNoteOff: vi.fn(),
   } as any;
 }
 
@@ -151,7 +149,8 @@ describe('PracticeMode - accompaniment', () => {
     await pm.start();
     im.simulateNoteOn(60);
 
-    expect(audio.playNote).not.toHaveBeenCalled();
+    // playNote is called for user feedback (note 60), but NOT for accompaniment (note 40)
+    expect(audio.playNote).not.toHaveBeenCalledWith(40, expect.any(Number), expect.any(Number));
   });
 });
 

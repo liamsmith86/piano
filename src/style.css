@@ -1014,6 +1014,7 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
 /* ===== Metronome Visual ===== */
 .tb-metronome-btn.active {
   color: var(--warning);
+  position: relative;
 }
 
 .tb-metronome-btn.active::after {

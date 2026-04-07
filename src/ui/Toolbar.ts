@@ -214,7 +214,8 @@ export class Toolbar {
         this.app.setHand(hand);
         this.handBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        this.accompRow.style.display = hand === 'both' ? 'none' : 'flex';
+        const mode = this.app.getMode();
+        this.accompRow.style.display = (mode === 'practice' && hand !== 'both') ? 'flex' : 'none';
       });
     }
 
@@ -310,13 +311,26 @@ export class Toolbar {
     this.app.on('loaded', () => {
       const song = this.app.getLoadedSong();
       if (song) this.songTitle.textContent = song.title;
-      // Update loop end to total measures
+      // Reset progress bar
+      this.progressBar.style.width = '0%';
+      // Reset tempo to 100%
+      this.tempoSlider.value = '100';
+      this.app.setTempoScale(1.0);
+      const bpmDisplay = this.container.querySelector('.tb-bpm-display');
+      if (bpmDisplay) this.updateBpmDisplay(bpmDisplay, 100);
+      this.container.querySelectorAll('.tb-tempo-preset').forEach(btn => {
+        btn.classList.toggle('active', parseInt((btn as HTMLButtonElement).dataset.speed!) === 100);
+      });
+      // Reset loop UI
+      this.loopToggle.checked = false;
+      this.loopStartInput.value = '1';
       const totalMeasures = this.app.getTotalMeasures();
       if (totalMeasures > 0) {
         this.loopEndInput.value = String(totalMeasures);
         this.loopEndInput.max = String(totalMeasures);
         this.loopStartInput.max = String(totalMeasures);
       }
+      this.updatePlayButton();
     });
     this.app.on('modeChanged', ({ mode }) => {
       this.modeToggle.querySelectorAll('.tb-mode-btn').forEach(b => b.classList.remove('active'));
@@ -326,7 +340,8 @@ export class Toolbar {
     this.app.on('handChanged', ({ hand }) => {
       this.handBtns.forEach(b => b.classList.remove('active'));
       this.handBtns.find(b => b.dataset.hand === hand)?.classList.add('active');
-      this.accompRow.style.display = hand === 'both' ? 'none' : 'flex';
+      const mode = this.app.getMode();
+      this.accompRow.style.display = (mode === 'practice' && hand !== 'both') ? 'flex' : 'none';
     });
     this.app.on('noteCorrect', () => this.updatePracticeStats());
     this.app.on('noteWrong', () => this.updatePracticeStats());
@@ -373,6 +388,9 @@ export class Toolbar {
     const mode = this.app.getMode();
     this.statsDisplay.style.display = mode === 'practice' ? 'flex' : 'none';
     this.loopRow.style.display = mode === 'practice' ? 'flex' : 'none';
+    // Accompaniment is only relevant in practice mode with a single hand selected
+    const hand = this.app.getHand();
+    this.accompRow.style.display = (mode === 'practice' && hand !== 'both') ? 'flex' : 'none';
     this.updatePlayButton();
   }
 

@@ -95,11 +95,10 @@ export class PracticeComplete {
       troubleBtn.addEventListener('click', () => {
         this.hide();
         // Set loop to the range covering all trouble measures
-        const firstBad = troubleMeasures[troubleMeasures.length - 1].measure;
-        const lastBad = troubleMeasures[0].measure;
+        const measureNumbers = troubleMeasures.map(m => m.measure);
         this.onPracticeTroubleSpots?.(
-          Math.min(firstBad, lastBad),
-          Math.max(firstBad, lastBad),
+          Math.min(...measureNumbers),
+          Math.max(...measureNumbers),
         );
       });
     }

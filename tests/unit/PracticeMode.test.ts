@@ -9,8 +9,6 @@ function createMockAudio() {
     ready: true,
     init: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn(),
-    playNoteOn: vi.fn(),
-    playNoteOff: vi.fn(),
   } as any;
 }
 
@@ -39,7 +37,7 @@ function createMockAnalyzer(timeline: NoteEvent[]) {
       if (hand === 'both') return timeline;
       const staff = hand === 'right' ? 1 : 2;
       return timeline
-        .map((e, i) => ({ ...e, index: i, notes: e.notes.filter(n => n.staff === staff) }))
+        .map(e => ({ ...e, notes: e.notes.filter(n => n.staff === staff) }))
         .filter(e => e.notes.length > 0);
     }),
   } as any;
@@ -175,14 +173,14 @@ describe('PracticeMode', () => {
     await pm.start();
     inputManager.simulateNoteOn(60, 90);
 
-    expect(audio.playNoteOn).toHaveBeenCalledWith(60, 90);
+    expect(audio.playNote).toHaveBeenCalledWith(60, 0.3, 90);
   });
 
   it('plays quiet sound on wrong note', async () => {
     await pm.start();
     inputManager.simulateNoteOn(62);
 
-    expect(audio.playNoteOn).toHaveBeenCalledWith(62, 0.3);
+    expect(audio.playNote).toHaveBeenCalledWith(62, 0.3, 0.3);
   });
 
   it('tracks accuracy correctly', async () => {

@@ -110,10 +110,11 @@ export class ScoreAnalyzer {
       }
     }
 
-    // Build tempo map from all measures
+    // Build tempo map from all measures (only when BPM actually changes)
     let currentBeat = 0;
     for (const sourceMeasure of sheet.SourceMeasures) {
-      if (sourceMeasure.TempoInBPM > 0) {
+      if (sourceMeasure.TempoInBPM > 0 &&
+          (this.tempoMap.length === 0 || this.tempoMap[this.tempoMap.length - 1].bpm !== sourceMeasure.TempoInBPM)) {
         this.tempoMap.push({
           timestamp: currentBeat,
           bpm: sourceMeasure.TempoInBPM,

@@ -58,8 +58,6 @@ function createMockAudio() {
     ready: true,
     init: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn(),
-    playNoteOn: vi.fn(),
-    playNoteOff: vi.fn(),
   } as any;
 }
 
@@ -113,7 +111,7 @@ function createMockAnalyzer(timeline: NoteEvent[]) {
       if (hand === 'both') return timeline;
       const staff = hand === 'right' ? 1 : 2;
       return timeline
-        .map((e, i) => ({ ...e, index: i, notes: e.notes.filter(n => n.staff === staff) }))
+        .map(e => ({ ...e, notes: e.notes.filter(n => n.staff === staff) }))
         .filter(e => e.notes.length > 0);
     }),
   } as any;

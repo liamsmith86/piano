@@ -90,8 +90,11 @@ async function main(): Promise<void> {
     }
   };
 
+  let isStarting = false; // guard against concurrent start attempts
+
   const playWithCountIn = async () => {
-    if (!app.getLoadedSong()) return;
+    if (!app.getLoadedSong() || isStarting) return;
+    isStarting = true;
     try {
       await ensureAudio();
       const settings = settingsPanel.getSettings();
@@ -103,11 +106,14 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('Playback error:', err);
       countIn.hide();
+    } finally {
+      isStarting = false;
     }
   };
 
   const practiceWithCountIn = async () => {
-    if (!app.getLoadedSong()) return;
+    if (!app.getLoadedSong() || isStarting) return;
+    isStarting = true;
     try {
       await ensureAudio();
       const settings = settingsPanel.getSettings();
@@ -122,6 +128,8 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('Practice start error:', err);
       countIn.hide();
+    } finally {
+      isStarting = false;
     }
   };
 
@@ -179,6 +187,9 @@ async function main(): Promise<void> {
   app.on('loaded', () => {
     scoreContainer.style.display = 'block';
     libraryContainer.style.display = 'none';
+    // Clear stale practice state from previous song
+    scoreContainer.classList.remove('practice-active');
+    noteDisplay.hide();
     // Push browser history so back button returns to library
     history.pushState({ view: 'score' }, '');
     // Re-render overlays for newly loaded song
