@@ -16,7 +16,9 @@ const STORAGE_KEY = 'piano-practice-history';
 export function getHistory(): PracticeSession[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }

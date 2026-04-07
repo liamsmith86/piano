@@ -26,7 +26,6 @@ export class PracticeMode {
   private loopEnabled = false;
   private autoAdvanceTimeout: number = 0;
   private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
-  private noteOffTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private hitCount = new Map<number, number>(); // midi → count of hits
   private expectedMidis: number[] = [];
@@ -77,6 +76,11 @@ export class PracticeMode {
 
     this.active = true;
     this.updateFilteredTimeline();
+    if (this.filteredTimeline.length === 0) {
+      this.active = false;
+      console.warn('Cannot start practice: no notes for current hand/loop filters');
+      return;
+    }
     this.cursorIndex = 0;
     this.hitCount.clear();
     this.correctCount = 0;
@@ -104,8 +108,6 @@ export class PracticeMode {
   stop(): void {
     this.active = false;
     this.clearAutoAdvanceTimer();
-    for (const id of this.noteOffTimers) clearTimeout(id);
-    this.noteOffTimers.clear();
     this.inputManager.removeListener(this.inputHandler);
     this.renderer.clearNoteHighlights();
     this.renderer.cursorHide();
@@ -123,9 +125,9 @@ export class PracticeMode {
     const isExpected = currentHits < expectedCount;
 
     if (isExpected) {
-      // Correct note
+      // Correct note — use fixed-duration playback to avoid conflicts with accompaniment
       this.hitCount.set(midi, currentHits + 1);
-      this.audio.playNoteOn(midi, event.velocity || 0.8);
+      this.audio.playNote(midi, 0.3, event.velocity || 0.8);
       this.virtualKeyboard?.markCorrect(midi);
       this.events.emit('noteCorrect', {
         midiNumber: midi,
@@ -160,7 +162,7 @@ export class PracticeMode {
         this.wrongNotesList = this.wrongNotesList.slice(-200);
       }
       this.trackMeasureStat(false);
-      this.audio.playNoteOn(midi, 0.3); // Play quietly so user hears what they pressed
+      this.audio.playNote(midi, 0.3, 0.3); // Play quietly so user hears what they pressed
       this.virtualKeyboard?.markWrong(midi);
 
       // Show wrong note marker on the score
@@ -173,12 +175,6 @@ export class PracticeMode {
       });
     }
 
-    // Release note after a short delay (for practice feedback)
-    const timerId = setTimeout(() => {
-      this.audio.playNoteOff(midi);
-      this.noteOffTimers.delete(timerId);
-    }, 300);
-    this.noteOffTimers.add(timerId);
   }
 
   private advanceCursor(): void {
@@ -188,12 +184,15 @@ export class PracticeMode {
     if (this.cursorIndex >= this.filteredTimeline.length) {
       if (this.loopEnabled && this.loopStart !== null) {
         // Loop back to start of range — reset green notes for fresh visual
+        this.clearAutoAdvanceTimer();
         this.renderer.resetPlayedNotes();
         this.cursorIndex = 0;
         this.hitCount.clear();
+        this.lastSyncedOsmdIndex = -1;
         this.syncCursorToIndex();
         this.updateExpectedNotes();
         this.highlightExpected();
+        this.startAutoAdvanceTimer();
         this.events.emit('cursorAdvanced', { from: prevIndex, to: 0 });
         return;
       }
@@ -331,14 +330,28 @@ export class PracticeMode {
   setHand(hand: HandSelection): void {
     this.hand = hand;
     if (this.active) {
+      // Clear stale visual state from previous hand before rebuilding
+      this.renderer.clearNoteHighlights();
+      this.renderer.resetPlayedNotes();
+      this.clearAutoAdvanceTimer();
       this.updateFilteredTimeline();
+      if (this.filteredTimeline.length === 0) {
+        this.expectedMidis = [];
+        this.totalNotes = 0;
+        this.cursorIndex = 0;
+        this.lastSyncedOsmdIndex = -1;
+        this.virtualKeyboard?.highlightKeys([]);
+        return;
+      }
       this.totalNotes = this.filteredTimeline.length;
       // Reset to beginning with new filter
       this.cursorIndex = 0;
       this.hitCount.clear();
+      this.lastSyncedOsmdIndex = -1;
       this.syncCursorToIndex();
       this.updateExpectedNotes();
       this.highlightExpected();
+      this.startAutoAdvanceTimer();
     }
   }
 
@@ -376,6 +389,18 @@ export class PracticeMode {
 
   getExpectedNotes(): number[] {
     return [...this.expectedMidis];
+  }
+
+  getCurrentEvent(): NoteEvent | null {
+    return this.filteredTimeline[this.cursorIndex] ?? null;
+  }
+
+  /** Re-sync OSMD cursor after external reset (e.g., zoom re-render) */
+  resyncCursor(): void {
+    if (!this.active) return;
+    this.lastSyncedOsmdIndex = -1;
+    this.syncCursorToIndex();
+    this.highlightExpected();
   }
 
   getAccuracy(): number {
@@ -435,7 +460,18 @@ export class PracticeMode {
     this.loopEnd = endMeasure;
     this.loopEnabled = true;
     if (this.active) {
+      this.clearAutoAdvanceTimer();
+      this.renderer.clearNoteHighlights();
+      this.renderer.resetPlayedNotes();
       this.updateFilteredTimeline();
+      if (this.filteredTimeline.length === 0) {
+        this.expectedMidis = [];
+        this.totalNotes = 0;
+        this.cursorIndex = 0;
+        this.lastSyncedOsmdIndex = -1;
+        this.virtualKeyboard?.highlightKeys([]);
+        return;
+      }
       this.totalNotes = this.filteredTimeline.length;
       // Reset stats when changing loop range
       this.correctCount = 0;
@@ -444,9 +480,11 @@ export class PracticeMode {
       this.streak = 0;
       this.cursorIndex = 0;
       this.hitCount.clear();
+      this.lastSyncedOsmdIndex = -1;
       this.syncCursorToIndex();
       this.updateExpectedNotes();
       this.highlightExpected();
+      this.startAutoAdvanceTimer();
     }
   }
 
@@ -455,8 +493,26 @@ export class PracticeMode {
     this.loopEnd = null;
     this.loopEnabled = false;
     if (this.active) {
+      this.renderer.clearNoteHighlights();
+      this.renderer.resetPlayedNotes();
+      this.clearAutoAdvanceTimer();
       this.updateFilteredTimeline();
+      if (this.filteredTimeline.length === 0) {
+        this.expectedMidis = [];
+        this.totalNotes = 0;
+        this.cursorIndex = 0;
+        this.lastSyncedOsmdIndex = -1;
+        this.virtualKeyboard?.highlightKeys([]);
+        return;
+      }
       this.totalNotes = this.filteredTimeline.length;
+      this.cursorIndex = 0;
+      this.hitCount.clear();
+      this.lastSyncedOsmdIndex = -1;
+      this.syncCursorToIndex();
+      this.updateExpectedNotes();
+      this.highlightExpected();
+      this.startAutoAdvanceTimer();
     }
   }
 

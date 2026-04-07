@@ -14,6 +14,7 @@ export class AudioEngine {
   private metronomeEnabled = false;
   private metronomeInterval: number | null = null;
   private initPromise: Promise<void> | null = null;
+  private countInCancelled = false;
 
   async init(): Promise<void> {
     if (this.isReady) return;
@@ -92,18 +93,6 @@ export class AudioEngine {
     this.sampler.triggerAttackRelease(noteName, duration, Tone.now(), velocity);
   }
 
-  playNoteOn(midiNumber: number, velocity: number = 0.8): void {
-    if (!this.sampler || !this.isReady) return;
-    const noteName = midiToNoteName(midiNumber);
-    this.sampler.triggerAttack(noteName, Tone.now(), velocity);
-  }
-
-  playNoteOff(midiNumber: number): void {
-    if (!this.sampler || !this.isReady) return;
-    const noteName = midiToNoteName(midiNumber);
-    this.sampler.triggerRelease(noteName, Tone.now());
-  }
-
   schedulePlayback(
     events: NoteEvent[],
     hand: HandSelection,
@@ -165,9 +154,11 @@ export class AudioEngine {
 
   async countIn(beats: number = 4, onBeat?: (beat: number) => void): Promise<void> {
     if (!this.metronomeSynth || !this.isReady) return;
+    this.countInCancelled = false;
     const interval = 60 / (this._tempo * this._tempoScale);
 
     for (let i = 0; i < beats; i++) {
+      if (this.countInCancelled) return;
       const freq = i === 0 ? 1200 : 900;
       this.metronomeSynth.triggerAttackRelease(freq, '16n');
       onBeat?.(i + 1);
@@ -175,6 +166,7 @@ export class AudioEngine {
         await new Promise(resolve => setTimeout(resolve, interval * 1000));
       }
     }
+    if (this.countInCancelled) return;
     // Small pause after last beat before starting
     await new Promise(resolve => setTimeout(resolve, interval * 1000));
   }
@@ -192,6 +184,7 @@ export class AudioEngine {
   }
 
   stop(): void {
+    this.countInCancelled = true;
     Tone.getTransport().stop();
     this.clearSchedule();
   }

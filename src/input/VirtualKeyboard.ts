@@ -35,6 +35,9 @@ export class VirtualKeyboard {
   }
 
   render(): void {
+    // Cancel any pending markCorrect/markWrong timers from previous render
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers.clear();
     this.container.innerHTML = '';
     this.container.classList.add('virtual-keyboard');
     this.keyElements.clear();

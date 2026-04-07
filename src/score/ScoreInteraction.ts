@@ -127,10 +127,12 @@ export class ScoreInteraction {
 
     if (svgViewBox) {
       const parts = svgViewBox.split(/\s+/).map(Number);
-      scaleX = svgRect.width / parts[2];
-      scaleY = svgRect.height / parts[3];
-      svgOffsetX = svgRect.left - containerRect.left + this.container.scrollLeft;
-      svgOffsetY = svgRect.top - containerRect.top + this.container.scrollTop;
+      if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0 && parts.every(p => !isNaN(p))) {
+        scaleX = svgRect.width / parts[2];
+        scaleY = svgRect.height / parts[3];
+        svgOffsetX = svgRect.left - containerRect.left + this.container.scrollLeft;
+        svgOffsetY = svgRect.top - containerRect.top + this.container.scrollTop;
+      }
     }
 
     for (let mIdx = 0; mIdx < measureList.length; mIdx++) {

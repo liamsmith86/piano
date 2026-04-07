@@ -91,6 +91,15 @@ export class KeyboardInput {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) {
+      // Release all held keys so InputManager.activeNotes stays in sync
+      for (const key of this.activeKeys) {
+        this.inputManager.emit({
+          type: 'noteOff',
+          midiNumber: KEY_MAP[key],
+          velocity: 0,
+          source: 'keyboard',
+        });
+      }
       this.activeKeys.clear();
     }
   }

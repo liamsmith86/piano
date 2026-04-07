@@ -37,6 +37,7 @@ export class PianoApp {
   private loadedSong: SongInfo | null = null;
   private uploadedSongs: SongInfo[] = [];
   private discoveredSongs: SongInfo[] = [];
+  private loadGeneration = 0; // guards against concurrent loadSong calls
 
   constructor(
     scoreContainer: HTMLElement,
@@ -74,6 +75,9 @@ export class PianoApp {
   // --- Song Management ---
 
   async loadSong(urlOrFile: string | File): Promise<void> {
+    // Guard against concurrent loads — a newer call supersedes this one
+    const generation = ++this.loadGeneration;
+
     // Full state reset before loading new song
     this.playMode.stop();
     this.practiceMode.stop();
@@ -82,6 +86,7 @@ export class PianoApp {
 
     if (typeof urlOrFile === 'string') {
       await this.renderer.load(urlOrFile);
+      if (generation !== this.loadGeneration) return; // superseded by newer load
 
       // Find or create song info
       const preloaded = PRELOADED_SONGS.find(s => s.url === urlOrFile);
@@ -97,7 +102,9 @@ export class PianoApp {
       }
     } else {
       const buffer = await urlOrFile.arrayBuffer();
+      if (generation !== this.loadGeneration) return; // superseded by newer load
       await this.renderer.load(buffer);
+      if (generation !== this.loadGeneration) return; // superseded by newer load
       const songId = `upload-${Date.now()}`;
       const title = filenameToTitle(urlOrFile.name);
       this.loadedSong = {
@@ -114,6 +121,8 @@ export class PianoApp {
         console.warn('Failed to persist uploaded song:', err);
       }
     }
+
+    if (generation !== this.loadGeneration) return; // superseded by newer load
 
     // Analyze the loaded score
     const osmd = this.renderer.getOSMD();
@@ -173,8 +182,16 @@ export class PianoApp {
       await this.loadSong(preloaded.url);
       return;
     }
-    // Check uploaded
+    // Check discovered songs (from manifest)
+    const discovered = this.discoveredSongs.find(s => s.id === id);
+    if (discovered) {
+      await this.loadSong(discovered.url);
+      return;
+    }
+    // Check uploaded — guard against concurrent loads
+    const generation = ++this.loadGeneration;
     const data = await getUploadedSongData(id);
+    if (generation !== this.loadGeneration) return;
     if (data) {
       // Reset state before loading
       this.playMode.stop();
@@ -183,6 +200,7 @@ export class PianoApp {
       this.scoreInteraction.clearSelection();
 
       await this.renderer.load(data);
+      if (generation !== this.loadGeneration) return;
       this.loadedSong = this.uploadedSongs.find(s => s.id === id) ?? null;
       const osmd = this.renderer.getOSMD();
       if (osmd) {
@@ -259,9 +277,7 @@ export class PianoApp {
 
   getExpectedNotes(): NoteEvent[] {
     if (this.currentMode !== 'practice') return [];
-    const idx = this.practiceMode.getCursorIndex();
-    const filtered = this.analyzer.filterByHand(this.currentHand);
-    const event = filtered[idx];
+    const event = this.practiceMode.getCurrentEvent();
     return event ? [event] : [];
   }
 
@@ -357,6 +373,8 @@ export class PianoApp {
 
   setZoom(zoom: number): void {
     this.renderer.setZoom(zoom);
+    // Re-sync cursor after zoom (OSMD re-render resets cursor to beginning)
+    this.practiceMode.resyncCursor();
     this.scoreInteraction.buildMeasureMap();
     this.events.emit('zoomed', { zoom: this.renderer.getZoom() });
   }
