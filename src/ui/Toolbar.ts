@@ -44,6 +44,7 @@ export class Toolbar {
         </button>
         <span class="tb-song-title" aria-live="polite">Select a song to begin</span>
         <div class="tb-spacer"></div>
+        <a class="tb-home-link" href="https://everla.st/" title="More everla.st projects">everla.st</a>
         <div class="tb-mode-toggle" role="group" aria-label="Mode selection">
           <button class="tb-mode-btn active" data-mode="play" aria-pressed="true">Play</button>
           <button class="tb-mode-btn" data-mode="practice" aria-pressed="false">Practice</button>

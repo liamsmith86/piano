@@ -79,6 +79,26 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
   max-width: 400px;
 }
 
+.tb-home-link {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tb-home-link:hover,
+.tb-home-link:focus-visible {
+  color: var(--text);
+  background: var(--bg-elevated);
+  outline: none;
+}
+
 .tb-btn {
   display: inline-flex;
   align-items: center;

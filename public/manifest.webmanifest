@@ -1,6 +1,6 @@
 {
-  "name": "Player",
-  "short_name": "Player",
+  "name": "Piano Practice",
+  "short_name": "Piano",
   "description": "Learn piano from sheet music with real-time MIDI keyboard support, practice mode, and visual aids.",
   "start_url": "/",
   "display": "standalone",
