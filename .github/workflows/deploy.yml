@@ -53,6 +53,31 @@ jobs:
             dist/ \
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/piano/dist/
 
+      - name: Purge Cloudflare cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: 7bfceb8a8b8ec28f70235cc3ef0c8c66
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "CLOUDFLARE_API_TOKEN is not configured; skipping cache purge"
+            exit 0
+          fi
+
+          curl -fsS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}' \
+            | grep -q '"success":true' && echo "Cloudflare cache purged"
+
+      - name: Production smoke check
+        run: |
+          curl -fsSI https://piano.everla.st/ >/dev/null
+          curl -fsSL https://piano.everla.st/robots.txt \
+            | grep -F "Sitemap: https://piano.everla.st/sitemap.xml"
+          curl -fsSL https://piano.everla.st/sitemap.xml \
+            | grep -F "<loc>https://piano.everla.st/</loc>"
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key
