@@ -22,6 +22,9 @@ async function getNoteColorsAtCursor(page: any): Promise<string[]> {
     if (!gnotes) return [];
     const colors: string[] = [];
     for (const gn of gnotes) {
+      // Multi-part scores expose every instrument under OSMD's cursor, while
+      // practice intentionally highlights only the selected playable part.
+      if (!(window.pianoApp.renderer as any).isGraphicalNoteSelected(gn)) continue;
       const svg = gn.getSVGGElement?.();
       if (svg) {
         svg.querySelectorAll('path, circle, ellipse').forEach((el: any) => {

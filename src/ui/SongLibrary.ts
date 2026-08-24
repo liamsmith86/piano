@@ -23,10 +23,11 @@ export class SongLibrary {
 
   async render(): Promise<void> {
     const generation = ++this.renderGeneration;
-    this.container.innerHTML = '';
 
     const wrapper = document.createElement('div');
     wrapper.className = 'song-library';
+    const grid = document.createElement('div');
+    grid.className = 'sl-grid';
 
     // Header
     const header = document.createElement('div');
@@ -58,14 +59,14 @@ export class SongLibrary {
     const searchInput = searchBar.querySelector('.sl-search-input') as HTMLInputElement;
     searchInput.addEventListener('input', () => {
       const query = searchInput.value.toLowerCase().trim();
-      this.grid?.querySelectorAll('.sl-card').forEach(card => {
+      grid.querySelectorAll('.sl-card').forEach(card => {
         const title = card.querySelector('.sl-card-title')?.textContent?.toLowerCase() ?? '';
         (card as HTMLElement).style.display = title.includes(query) ? '' : 'none';
       });
     });
 
     // Welcome banner (only for first visit)
-    if (!localStorage.getItem('piano-welcomed')) {
+    if (!this.hasSeenWelcome()) {
       const welcome = document.createElement('div');
       welcome.className = 'sl-welcome';
       welcome.innerHTML = `
@@ -76,14 +77,10 @@ export class SongLibrary {
       `;
       welcome.querySelector('.sl-welcome-dismiss')!.addEventListener('click', () => {
         welcome.remove();
-        localStorage.setItem('piano-welcomed', '1');
+        this.rememberWelcome();
       });
       wrapper.appendChild(welcome);
     }
-
-    // Song grid
-    this.grid = document.createElement('div');
-    this.grid.className = 'sl-grid';
 
     // Discover all songs (preloaded + personal from manifest)
     await this.app.discoverSongs();
@@ -99,10 +96,10 @@ export class SongLibrary {
 
     const allSongs = this.app.getSongList();
     for (const song of allSongs) {
-      this.grid.appendChild(this.createSongCard(song, song.source === 'uploaded'));
+      grid.appendChild(this.createSongCard(song, song.source === 'uploaded'));
     }
 
-    wrapper.appendChild(this.grid);
+    wrapper.appendChild(grid);
 
     // Drop zone
     const dropZone = document.createElement('div');
@@ -123,7 +120,24 @@ export class SongLibrary {
     });
     wrapper.appendChild(dropZone);
 
-    this.container.appendChild(wrapper);
+    this.grid = grid;
+    this.container.replaceChildren(wrapper);
+  }
+
+  private hasSeenWelcome(): boolean {
+    try {
+      return localStorage.getItem('piano-welcomed') !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  private rememberWelcome(): void {
+    try {
+      localStorage.setItem('piano-welcomed', '1');
+    } catch {
+      // Dismissal still applies to this render when persistent storage is unavailable.
+    }
   }
 
   private createSongCard(song: SongInfo, isUploaded = false): HTMLElement {

@@ -121,6 +121,22 @@ describe('FingeringComputer', () => {
     expect(sorted[1].finger).toBe(5);
   });
 
+  it('uses compact fingering for close dyads', () => {
+    const fc = new FingeringComputer();
+    const intervals = [
+      { midi: 62, finger: 2 },
+      { midi: 64, finger: 3 },
+      { midi: 65, finger: 4 },
+      { midi: 67, finger: 5 },
+    ];
+
+    for (const { midi, finger } of intervals) {
+      const chord = [makeNote(60), makeNote(midi)];
+      fc.compute([makeEvent(0, chord)], 'right');
+      expect(chord.sort((a, b) => a.midi - b.midi).map(note => note.finger)).toEqual([1, finger]);
+    }
+  });
+
   it('assigns chord with 5 notes as 1-2-3-4-5', () => {
     const fc = new FingeringComputer();
     const chord = [makeNote(60), makeNote(62), makeNote(64), makeNote(65), makeNote(67)];

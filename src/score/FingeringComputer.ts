@@ -72,10 +72,24 @@ export class FingeringComputer {
     const count = Math.min(sorted.length, 5);
 
     if (count === 1) { sorted[0].finger = 3; return; }
-    if (count === 2) { sorted[0].finger = 1; sorted[1].finger = 5; return; }
+    if (count === 2) {
+      const interval = Math.abs(sorted[1].midi - sorted[0].midi);
+      sorted[0].finger = 1;
+      sorted[1].finger = this.fingerForDyadInterval(interval);
+      return;
+    }
     if (count === 3) { sorted[0].finger = 1; sorted[1].finger = 3; sorted[2].finger = 5; return; }
     if (count === 4) { sorted[0].finger = 1; sorted[1].finger = 2; sorted[2].finger = 3; sorted[3].finger = 5; return; }
     for (let i = 0; i < count; i++) sorted[i].finger = (i + 1) as FingerNumber;
+  }
+
+  /** Choose a comfortable upper finger instead of stretching every dyad 1-5. */
+  private fingerForDyadInterval(interval: number): FingerNumber {
+    if (interval === 0) return 1;
+    if (interval <= 2) return 2;
+    if (interval <= 4) return 3;
+    if (interval <= 5) return 4;
+    return 5;
   }
 
   private dpAssign(

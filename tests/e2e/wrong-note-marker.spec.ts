@@ -203,12 +203,8 @@ test.describe('Wrong Note Marker Positioning', () => {
     let markers = await getWrongMarkerPositions(page);
     expect(markers.length).toBe(1);
 
-    // Wait for fade (400ms display + 200ms fade + buffer)
-    await page.waitForTimeout(800);
-
-    // Marker should be removed from DOM
-    markers = await getWrongMarkerPositions(page);
-    expect(markers.length).toBe(0);
+    // Marker should be removed after the 1.5s display and 300ms fade.
+    await expect(page.locator('.wrong-note-marker')).toHaveCount(0, { timeout: 2500 });
   });
 
   test('left hand wrong note marker appears on bass staff, not treble', async ({ page }) => {

@@ -29,6 +29,7 @@ test.describe('Visual Regression: Score Rendering', () => {
     await page.goto('/');
     await waitForApp(page);
     await loadSong(page, '/songs/BeetAnGeSample.mxl');
+    await page.locator('#score-container').evaluate(element => { element.scrollTop = 0; });
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('score-beethoven-loaded.png', {
