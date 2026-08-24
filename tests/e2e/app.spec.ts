@@ -297,6 +297,7 @@ test.describe('Virtual Keyboard', () => {
 
     // Show keyboard (hidden by default)
     await page.evaluate(() => {
+      window.pianoApp.virtualKeyboard?.ensureRendered();
       document.getElementById('keyboard-container')!.style.display = '';
     });
 

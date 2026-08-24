@@ -432,7 +432,12 @@ async function main(): Promise<void> {
   // Global keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     const target = e.target instanceof Element ? e.target : null;
-    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"], [role="dialog"]')) {
+    if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) {
+      return;
+    }
+    // Space activates native buttons and links by itself; handling it again as
+    // a transport shortcut would cause a double action.
+    if (e.key === ' ' && target?.closest('button, a')) {
       return;
     }
 
