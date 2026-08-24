@@ -59,6 +59,8 @@ export interface InputEvent {
   midiNumber: number;
   velocity: number;
   source: 'midi' | 'virtual' | 'keyboard' | 'programmatic';
+  /** Stable identity for a physical key or input channel. */
+  inputId?: string;
 }
 
 export interface AppEventMap {

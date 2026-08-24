@@ -44,8 +44,11 @@ export class KeyboardInput {
   private inputManager: InputManager;
   private activeKeys = new Set<string>();
   private enabled = true;
+  private initialized = false;
   private handleKeyDown: (e: KeyboardEvent) => void;
   private handleKeyUp: (e: KeyboardEvent) => void;
+  private handleBlur: () => void;
+  private handleVisibilityChange: () => void;
 
   constructor(inputManager: InputManager) {
     this.inputManager = inputManager;
@@ -64,6 +67,7 @@ export class KeyboardInput {
           midiNumber: KEY_MAP[key],
           velocity: 0.7,
           source: 'keyboard',
+          inputId: key,
         });
       }
     };
@@ -78,29 +82,30 @@ export class KeyboardInput {
           midiNumber: KEY_MAP[key],
           velocity: 0,
           source: 'keyboard',
+          inputId: key,
         });
       }
+    };
+
+    this.handleBlur = () => this.releaseHeldKeys();
+    this.handleVisibilityChange = () => {
+      if (document.hidden) this.releaseHeldKeys();
     };
   }
 
   init(): void {
+    if (this.initialized) return;
+    this.initialized = true;
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('blur', this.handleBlur);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) {
-      // Release all held keys so InputManager.activeNotes stays in sync
-      for (const key of this.activeKeys) {
-        this.inputManager.emit({
-          type: 'noteOff',
-          midiNumber: KEY_MAP[key],
-          velocity: 0,
-          source: 'keyboard',
-        });
-      }
-      this.activeKeys.clear();
+      this.releaseHeldKeys();
     }
   }
 
@@ -117,8 +122,25 @@ export class KeyboardInput {
   }
 
   destroy(): void {
+    this.releaseHeldKeys();
+    if (!this.initialized) return;
+    this.initialized = false;
     document.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('blur', this.handleBlur);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+  }
+
+  private releaseHeldKeys(): void {
+    for (const key of this.activeKeys) {
+      this.inputManager.emit({
+        type: 'noteOff',
+        midiNumber: KEY_MAP[key],
+        velocity: 0,
+        source: 'keyboard',
+        inputId: key,
+      });
+    }
     this.activeKeys.clear();
   }
 }

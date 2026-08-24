@@ -74,6 +74,36 @@ describe('KeyboardInput', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('does not install duplicate handlers when initialized twice', () => {
+    const listener = vi.fn();
+    im.addListener(listener);
+    ki.init();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
+
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('tracks two physical keys mapped to the same note independently', () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'q' }));
+
+    expect(im.isNoteActive(60)).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: ',' }));
+    expect(im.isNoteActive(60)).toBe(false);
+  });
+
+  it('releases held notes when the window loses focus', () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
+    expect(im.isNoteActive(60)).toBe(true);
+
+    window.dispatchEvent(new Event('blur'));
+
+    expect(im.isNoteActive(60)).toBe(false);
+  });
+
   it('ignores unmapped keys', () => {
     const listener = vi.fn();
     im.addListener(listener);
@@ -157,5 +187,13 @@ describe('KeyboardInput', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
 
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('releases held notes when destroyed', () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
+
+    ki.destroy();
+
+    expect(im.isNoteActive(60)).toBe(false);
   });
 });

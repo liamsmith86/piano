@@ -64,16 +64,24 @@ export class PianoApp {
     // Forward input events
     this.inputManager.addListener((event) => {
       this.events.emit('inputNote', event);
+      if (event.type === 'noteOn') {
+        this.audio.noteOn(event.midiNumber, event.velocity);
+      } else if (!this.inputManager.isNoteActive(event.midiNumber)) {
+        this.audio.noteOff(event.midiNumber);
+      }
     });
+
+    // QWERTY input should work immediately, even while samples or MIDI access
+    // are still initializing after the first user gesture.
+    this.keyboardInput.init();
   }
 
   async init(): Promise<void> {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      await this.audio.init();
-      await this.midiInput.init();
       this.keyboardInput.init();
+      await Promise.all([this.audio.init(), this.midiInput.init()]);
     })().catch(error => {
       this.initPromise = null;
       throw error;

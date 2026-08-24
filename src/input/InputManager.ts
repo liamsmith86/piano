@@ -4,7 +4,7 @@ type InputListener = (event: InputEvent) => void;
 
 export class InputManager {
   private listeners = new Set<InputListener>();
-  private activeNotes = new Set<number>();
+  private activeInputsByNote = new Map<number, Set<string>>();
 
   addListener(callback: InputListener): void {
     this.listeners.add(callback);
@@ -15,11 +15,26 @@ export class InputManager {
   }
 
   emit(event: InputEvent): void {
+    const inputId = this.getInputId(event);
     if (event.type === 'noteOn') {
-      this.activeNotes.add(event.midiNumber);
+      const activeInputs = this.activeInputsByNote.get(event.midiNumber) ?? new Set<string>();
+      activeInputs.add(inputId);
+      this.activeInputsByNote.set(event.midiNumber, activeInputs);
     } else {
-      this.activeNotes.delete(event.midiNumber);
+      const activeInputs = this.activeInputsByNote.get(event.midiNumber);
+      activeInputs?.delete(inputId);
+      if (activeInputs?.size === 0) {
+        this.activeInputsByNote.delete(event.midiNumber);
+      }
     }
+    this.notifyListeners(event);
+  }
+
+  private getInputId(event: InputEvent): string {
+    return `${event.source}:${event.inputId ?? event.midiNumber}`;
+  }
+
+  private notifyListeners(event: InputEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event);
@@ -30,11 +45,11 @@ export class InputManager {
   }
 
   getActiveNotes(): Set<number> {
-    return new Set(this.activeNotes);
+    return new Set(this.activeInputsByNote.keys());
   }
 
   isNoteActive(midiNumber: number): boolean {
-    return this.activeNotes.has(midiNumber);
+    return this.activeInputsByNote.has(midiNumber);
   }
 
   // Programmatic input for testing
@@ -57,16 +72,16 @@ export class InputManager {
   }
 
   clearAll(): void {
-    // Release all active notes
-    for (const note of this.activeNotes) {
-      this.emit({
+    const activeNotes = [...this.activeInputsByNote.keys()];
+    this.activeInputsByNote.clear();
+    for (const note of activeNotes) {
+      this.notifyListeners({
         type: 'noteOff',
         midiNumber: note,
         velocity: 0,
         source: 'programmatic',
       });
     }
-    this.activeNotes.clear();
   }
 
   destroy(): void {

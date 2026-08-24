@@ -119,4 +119,14 @@ describe('VirtualKeyboard', () => {
     vk.destroy();
     expect(container.innerHTML).toBe('');
   });
+
+  it('releases pressed notes before re-rendering', () => {
+    const firstKey = container.querySelector('.vk-white') as HTMLElement;
+    firstKey.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(im.getActiveNotes().size).toBe(1);
+
+    vk.render();
+
+    expect(im.getActiveNotes().size).toBe(0);
+  });
 });

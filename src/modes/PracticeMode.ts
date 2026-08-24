@@ -133,9 +133,7 @@ export class PracticeMode {
     const isExpected = currentHits < expectedCount;
 
     if (isExpected) {
-      // Correct note — use fixed-duration playback to avoid conflicts with accompaniment
       this.hitCount.set(midi, currentHits + 1);
-      this.audio.playNote(midi, 0.3, event.velocity || 0.8);
       this.virtualKeyboard?.markCorrect(midi);
       this.events.emit('noteCorrect', {
         midiNumber: midi,
@@ -170,7 +168,6 @@ export class PracticeMode {
         this.wrongNotesList = this.wrongNotesList.slice(-200);
       }
       this.trackMeasureStat(false);
-      this.audio.playNote(midi, 0.3, 0.3); // Play quietly so user hears what they pressed
       this.virtualKeyboard?.markWrong(midi);
 
       // Show wrong note marker on the score

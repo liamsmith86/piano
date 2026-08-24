@@ -41,6 +41,18 @@ describe('InputManager', () => {
     expect(im.isNoteActive(60)).toBe(false);
   });
 
+  it('keeps a note active until every input holding it releases', () => {
+    const im = new InputManager();
+    im.emit({ type: 'noteOn', midiNumber: 60, velocity: 1, source: 'keyboard', inputId: 'q' });
+    im.emit({ type: 'noteOn', midiNumber: 60, velocity: 1, source: 'virtual', inputId: '60' });
+
+    im.emit({ type: 'noteOff', midiNumber: 60, velocity: 0, source: 'keyboard', inputId: 'q' });
+    expect(im.isNoteActive(60)).toBe(true);
+
+    im.emit({ type: 'noteOff', midiNumber: 60, velocity: 0, source: 'virtual', inputId: '60' });
+    expect(im.isNoteActive(60)).toBe(false);
+  });
+
   it('simulateNoteOn emits noteOn event', () => {
     const im = new InputManager();
     const listener = vi.fn();

@@ -35,6 +35,7 @@ export class VirtualKeyboard {
   }
 
   render(): void {
+    this.releaseActiveNotes();
     // Cancel any pending markCorrect/markWrong timers from previous render
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
@@ -117,6 +118,7 @@ export class VirtualKeyboard {
           midiNumber: midi,
           velocity: 0.7,
           source: 'virtual',
+          inputId: String(midi),
         });
       }
     };
@@ -131,6 +133,7 @@ export class VirtualKeyboard {
           midiNumber: midi,
           velocity: 0,
           source: 'virtual',
+          inputId: String(midi),
         });
       }
     };
@@ -189,6 +192,7 @@ export class VirtualKeyboard {
   }
 
   setShowNoteNames(show: boolean): void {
+    if (show === this.showNoteNames) return;
     this.showNoteNames = show;
     this.render(); // re-render
   }
@@ -223,11 +227,24 @@ export class VirtualKeyboard {
   }
 
   destroy(): void {
+    this.releaseActiveNotes();
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
     this.container.innerHTML = '';
     this.keyElements.clear();
     this.highlightedNotes.clear();
+  }
+
+  private releaseActiveNotes(): void {
+    for (const midi of this.activeNotes) {
+      this.inputManager.emit({
+        type: 'noteOff',
+        midiNumber: midi,
+        velocity: 0,
+        source: 'virtual',
+        inputId: String(midi),
+      });
+    }
     this.activeNotes.clear();
   }
 }

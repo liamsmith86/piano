@@ -169,18 +169,18 @@ describe('PracticeMode', () => {
     expect(pm.getCursorIndex()).toBe(1); // advanced
   });
 
-  it('plays sound on correct note', async () => {
+  it('leaves live input audio to the centralized input monitor', async () => {
     await pm.start();
     inputManager.simulateNoteOn(60, 90);
 
-    expect(audio.playNote).toHaveBeenCalledWith(60, 0.3, 90);
+    expect(audio.playNote).not.toHaveBeenCalled();
   });
 
-  it('plays quiet sound on wrong note', async () => {
+  it('does not layer a second synthesized note over wrong input', async () => {
     await pm.start();
     inputManager.simulateNoteOn(62);
 
-    expect(audio.playNote).toHaveBeenCalledWith(62, 0.3, 0.3);
+    expect(audio.playNote).not.toHaveBeenCalled();
   });
 
   it('tracks accuracy correctly', async () => {

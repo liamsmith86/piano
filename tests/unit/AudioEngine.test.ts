@@ -5,6 +5,8 @@ const tone = vi.hoisted(() => {
   const sampler = {
     volume: { value: 0 },
     triggerAttackRelease: vi.fn(),
+    triggerAttack: vi.fn(),
+    triggerRelease: vi.fn(),
     releaseAll: vi.fn(),
     dispose: vi.fn(),
     toDestination: vi.fn(),
@@ -153,5 +155,16 @@ describe('AudioEngine', () => {
 
     expect(tone.sampler.releaseAll).toHaveBeenCalled();
     expect(tone.draw.cancel).toHaveBeenCalled();
+  });
+
+  it('starts and releases live input notes with normalized velocity', async () => {
+    const audio = new AudioEngine();
+    await audio.init();
+
+    audio.noteOn(60, 100);
+    audio.noteOff(60);
+
+    expect(tone.sampler.triggerAttack).toHaveBeenCalledWith('C4', 0, 1);
+    expect(tone.sampler.triggerRelease).toHaveBeenCalledWith('C4', 0);
   });
 });

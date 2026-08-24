@@ -113,6 +113,19 @@ export class AudioEngine {
     this.sampler.triggerAttackRelease(noteName, duration, Tone.now(), velocity);
   }
 
+  noteOn(midiNumber: number, velocity: number = 0.8): void {
+    if (!this.sampler || !this.isReady) return;
+    const normalizedVelocity = Number.isFinite(velocity)
+      ? Math.max(0, Math.min(1, velocity))
+      : 0.8;
+    this.sampler.triggerAttack(midiToNoteName(midiNumber), Tone.now(), normalizedVelocity);
+  }
+
+  noteOff(midiNumber: number): void {
+    if (!this.sampler || !this.isReady) return;
+    this.sampler.triggerRelease(midiToNoteName(midiNumber), Tone.now());
+  }
+
   schedulePlayback(
     events: NoteEvent[],
     hand: HandSelection,
