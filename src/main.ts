@@ -31,8 +31,7 @@ async function main(): Promise<void> {
   toolbar.render();
 
   const library = new SongLibrary(app, libraryContainer);
-  await library.render();
-  library.show();
+  await library.show();
 
   const noteDisplayContainer = document.getElementById('note-display-container')!;
   const practiceComplete = new PracticeComplete(appEl);

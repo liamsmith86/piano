@@ -153,4 +153,27 @@ test.describe('State Reset Between Song Changes', () => {
     expect(after.correctCount).toBe(1);
     expect(after.wrongCount).toBe(0);
   });
+
+  test('concurrent loads keep only the newest requested score', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+
+    const results = await page.evaluate(async () => Promise.all([
+      window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl'),
+      window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl'),
+      window.pianoApp.loadSong('/songs/Dichterliebe01.mxl'),
+    ]));
+
+    expect(results).toEqual([false, false, true]);
+    await page.waitForSelector('#score-container svg', { timeout: 15000 });
+
+    const state = await page.evaluate(() => ({
+      songId: window.pianoApp.getLoadedSong()?.id,
+      notes: window.pianoApp.getNoteTimeline().length,
+      measures: window.pianoApp.getTotalMeasures(),
+    }));
+    expect(state.songId).toBe('schumann-dichterliebe');
+    expect(state.notes).toBeGreaterThan(0);
+    expect(state.measures).toBeGreaterThan(0);
+  });
 });

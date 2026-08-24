@@ -14,13 +14,29 @@ export class ScoreRenderer {
   private overlay: ScoreOverlay;
   private practiceStaffHands: PracticeStaffMap = new Map();
   private _zoom: number = window.innerWidth <= 640 ? 0.75 : 1.5;
+  private loadQueue: Promise<void> = Promise.resolve();
+  private loadGeneration = 0;
+  private destroyed = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.overlay = new ScoreOverlay(container);
   }
 
-  async load(source: string | ArrayBuffer): Promise<void> {
+  async load(source: string | ArrayBuffer): Promise<boolean> {
+    const generation = ++this.loadGeneration;
+    const loadTask = this.loadQueue.then(() => this.performLoad(source, generation));
+    this.loadQueue = loadTask.then(() => undefined, () => undefined);
+    return loadTask;
+  }
+
+  cancelPendingLoad(): void {
+    this.loadGeneration++;
+  }
+
+  private async performLoad(source: string | ArrayBuffer, generation: number): Promise<boolean> {
+    if (this.destroyed || generation !== this.loadGeneration) return false;
+
     // Clean up previous instance to prevent memory leaks
     this.clearNoteHighlights();
     this.overlay.clear();
@@ -61,25 +77,45 @@ export class ScoreRenderer {
       }],
     };
 
-    this.osmd = new OpenSheetMusicDisplay(this.container, options);
+    const osmd = new OpenSheetMusicDisplay(this.container, options);
 
-    if (typeof source === 'string') {
-      await this.osmd.load(source);
-    } else {
-      // ArrayBuffer from file upload — pass as Blob (OSMD accepts Blob natively)
-      const header = new Uint8Array(source.slice(0, 4));
-      const isMxl = header[0] === 0x50 && header[1] === 0x4B; // PK = ZIP/MXL
-      const mimeType = isMxl ? 'application/vnd.recordare.musicxml+xml' : 'application/xml';
-      const blob = new Blob([source], { type: mimeType });
-      await this.osmd.load(blob);
+    try {
+      if (typeof source === 'string') {
+        await osmd.load(source);
+      } else {
+        // ArrayBuffer from file upload — pass as Blob (OSMD accepts Blob natively)
+        const header = new Uint8Array(source.slice(0, 4));
+        const isMxl = header[0] === 0x50 && header[1] === 0x4b; // PK = ZIP/MXL
+        const mimeType = isMxl ? 'application/vnd.recordare.musicxml+xml' : 'application/xml';
+        const blob = new Blob([source], { type: mimeType });
+        await osmd.load(blob);
+      }
+    } catch (error) {
+      osmd.clear();
+      if (generation !== this.loadGeneration || this.destroyed) return false;
+      throw error;
     }
 
-    this.osmd.zoom = this._zoom;
-    this.osmd.render();
-    this.practiceStaffHands = buildPracticeStaffMap(this.osmd);
+    // A newer request can arrive while OSMD is parsing. Because loads are
+    // serialized, it is safe to clear this stale instance before the next one starts.
+    if (generation !== this.loadGeneration || this.destroyed) {
+      osmd.clear();
+      return false;
+    }
+
+    try {
+      osmd.zoom = this._zoom;
+      osmd.render();
+    } catch (error) {
+      osmd.clear();
+      throw error;
+    }
+    this.osmd = osmd;
+    this.practiceStaffHands = buildPracticeStaffMap(osmd);
     this.setupCursor();
     this.setupWrongNoteOverlay();
     this.applyHandColoring();
+    return true;
   }
 
   private setupCursor(): void {
@@ -283,6 +319,7 @@ export class ScoreRenderer {
   }
 
   setZoom(zoom: number): void {
+    if (!Number.isFinite(zoom)) return;
     this._zoom = Math.max(0.5, Math.min(3.0, zoom));
     if (this.osmd) {
       // Clear stale SVG references before re-render (osmd.render() recreates all SVG elements)
@@ -562,6 +599,8 @@ export class ScoreRenderer {
   }
 
   destroy(): void {
+    this.destroyed = true;
+    this.loadGeneration++;
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
     this.clearNoteHighlights();

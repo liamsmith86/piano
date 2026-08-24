@@ -91,73 +91,43 @@ export class PianoApp {
 
   // --- Song Management ---
 
-  async loadSong(urlOrFile: string | File): Promise<void> {
-    // Guard against concurrent loads — a newer call supersedes this one
-    const generation = ++this.loadGeneration;
-
-    // Full state reset before loading new song
-    this.playMode.stop();
-    this.practiceMode.stop();
-    this.clearLoop();
-    this.scoreInteraction.clearSelection();
+  async loadSong(urlOrFile: string | File): Promise<boolean> {
+    const generation = this.beginSongLoad();
 
     if (typeof urlOrFile === 'string') {
-      await this.renderer.load(urlOrFile);
-      if (generation !== this.loadGeneration) return; // superseded by newer load
-
-      // Find or create song info
-      const preloaded = PRELOADED_SONGS.find(s => s.url === urlOrFile);
-      if (preloaded) {
-        this.loadedSong = preloaded;
-      } else {
-        this.loadedSong = {
-          id: urlOrFile,
-          title: filenameToTitle(urlOrFile.split('/').pop() ?? urlOrFile),
-          url: urlOrFile,
-          source: 'uploaded',
-        };
-      }
-    } else {
-      const buffer = await urlOrFile.arrayBuffer();
-      if (generation !== this.loadGeneration) return; // superseded by newer load
-      await this.renderer.load(buffer);
-      if (generation !== this.loadGeneration) return; // superseded by newer load
-      const songId = `upload-${Date.now()}`;
-      const title = filenameToTitle(urlOrFile.name);
-      this.loadedSong = {
-        id: songId,
-        title,
-        url: '',
-        source: 'uploaded',
+      const song = PRELOADED_SONGS.find(candidate => candidate.url === urlOrFile) ?? {
+        id: urlOrFile,
+        title: filenameToTitle(urlOrFile.split('/').pop() ?? urlOrFile),
+        url: urlOrFile,
+        source: 'uploaded' as const,
       };
-      // Persist to IndexedDB
-      try {
-        await saveUploadedSong(songId, title, buffer);
-        this.uploadedSongs.push(this.loadedSong);
-      } catch (err) {
-        console.warn('Failed to persist uploaded song:', err);
-      }
+      this.resetSongState();
+      return this.renderSong(urlOrFile, song, generation);
     }
 
-    if (generation !== this.loadGeneration) return; // superseded by newer load
+    const buffer = await urlOrFile.arrayBuffer();
+    if (!this.isCurrentLoad(generation)) return false;
 
-    // Analyze the loaded score
-    const osmd = this.renderer.getOSMD();
-    if (osmd) {
-      this.analyzer.analyze(osmd);
-      const tempo = this.analyzer.getDefaultTempo();
-      this.audio.setTempo(tempo);
+    const song: SongInfo = {
+      id: `upload-${crypto.randomUUID()}`,
+      title: filenameToTitle(urlOrFile.name),
+      url: '',
+      source: 'uploaded',
+    };
 
-      // Auto-adjust virtual keyboard range to match song
-      if (this.virtualKeyboard) {
-        const allMidis = this.analyzer.getTimeline().flatMap(e => e.notes.map(n => n.midi));
-        this.virtualKeyboard.adjustRangeForSong(allMidis);
-      }
+    try {
+      await saveUploadedSong(song.id, song.title, buffer);
+      this.uploadedSongs = [
+        ...this.uploadedSongs.filter(existing => existing.id !== song.id),
+        song,
+      ];
+    } catch (err) {
+      console.warn('Failed to persist uploaded song:', err);
     }
+    if (!this.isCurrentLoad(generation)) return false;
 
-    this.renderer.setHand(this.currentHand);
-    this.scoreInteraction.buildMeasureMap();
-    this.events.emit('loaded', { songId: this.loadedSong!.id });
+    this.resetSongState();
+    return this.renderSong(buffer, song, generation);
   }
 
   async loadUploadedSongsFromStorage(): Promise<void> {
@@ -174,7 +144,13 @@ export class PianoApp {
     try {
       const resp = await fetch('/songs/manifest.json');
       if (!resp.ok) return;
-      const entries: { file: string; folder: string }[] = await resp.json();
+      const manifest: unknown = await resp.json();
+      if (!Array.isArray(manifest)) return;
+      const entries = manifest.filter((entry): entry is { file: string; folder: string } => (
+        typeof entry === 'object' && entry !== null &&
+        typeof (entry as { file?: unknown }).file === 'string' &&
+        typeof (entry as { folder?: unknown }).folder === 'string'
+      ));
       this.discoveredSongs = entries
         .filter(e => {
           // Skip songs already in PRELOADED_SONGS
@@ -192,48 +168,72 @@ export class PianoApp {
     }
   }
 
-  async loadSongById(id: string): Promise<void> {
+  async loadSongById(id: string): Promise<boolean> {
     // Check preloaded first
     const preloaded = PRELOADED_SONGS.find(s => s.id === id);
     if (preloaded) {
-      await this.loadSong(preloaded.url);
-      return;
+      return this.loadSong(preloaded.url);
     }
     // Check discovered songs (from manifest)
     const discovered = this.discoveredSongs.find(s => s.id === id);
     if (discovered) {
-      await this.loadSong(discovered.url);
-      return;
+      return this.loadSong(discovered.url);
     }
-    // Check uploaded — guard against concurrent loads
-    const generation = ++this.loadGeneration;
-    const data = await getUploadedSongData(id);
-    if (generation !== this.loadGeneration) return;
-    if (data) {
-      // Reset state before loading
-      this.playMode.stop();
-      this.practiceMode.stop();
-      this.clearLoop();
-      this.scoreInteraction.clearSelection();
 
-      await this.renderer.load(data);
-      if (generation !== this.loadGeneration) return;
-      this.loadedSong = this.uploadedSongs.find(s => s.id === id) ?? null;
-      const osmd = this.renderer.getOSMD();
-      if (osmd) {
-        this.analyzer.analyze(osmd);
-        this.audio.setTempo(this.analyzer.getDefaultTempo());
-        if (this.virtualKeyboard) {
-          const allMidis = this.analyzer.getTimeline().flatMap(e => e.notes.map(n => n.midi));
-          this.virtualKeyboard.adjustRangeForSong(allMidis);
-        }
-      }
-      this.renderer.setHand(this.currentHand);
-      this.scoreInteraction.buildMeasureMap();
-      if (this.loadedSong) {
-        this.events.emit('loaded', { songId: this.loadedSong.id });
-      }
+    const song = this.uploadedSongs.find(candidate => candidate.id === id);
+    if (!song) throw new Error(`Song not found: ${id}`);
+
+    const generation = this.beginSongLoad();
+    const data = await getUploadedSongData(id);
+    if (!this.isCurrentLoad(generation)) return false;
+    if (!data) throw new Error(`Uploaded song data not found: ${id}`);
+
+    this.resetSongState();
+    return this.renderSong(data, song, generation);
+  }
+
+  private beginSongLoad(): number {
+    const generation = ++this.loadGeneration;
+    this.renderer.cancelPendingLoad();
+    return generation;
+  }
+
+  private isCurrentLoad(generation: number): boolean {
+    return generation === this.loadGeneration;
+  }
+
+  private resetSongState(): void {
+    this.playMode.stop();
+    this.practiceMode.stop();
+    this.clearLoop();
+    this.scoreInteraction.clearSelection();
+    this.loadedSong = null;
+  }
+
+  private async renderSong(
+    source: string | ArrayBuffer,
+    song: SongInfo,
+    generation: number,
+  ): Promise<boolean> {
+    const rendered = await this.renderer.load(source);
+    if (!rendered || !this.isCurrentLoad(generation)) return false;
+
+    const osmd = this.renderer.getOSMD();
+    if (!osmd) throw new Error(`Score renderer did not load "${song.title}"`);
+
+    this.analyzer.analyze(osmd);
+    this.audio.setTempo(this.analyzer.getDefaultTempo());
+    if (this.virtualKeyboard) {
+      const allMidis = this.analyzer.getTimeline().flatMap(event => event.notes.map(note => note.midi));
+      this.virtualKeyboard.adjustRangeForSong(allMidis);
     }
+
+    if (!this.isCurrentLoad(generation)) return false;
+    this.loadedSong = song;
+    this.renderer.setHand(this.currentHand);
+    this.scoreInteraction.buildMeasureMap();
+    this.events.emit('loaded', { songId: song.id });
+    return true;
   }
 
   getSongList(): SongInfo[] {

@@ -13,6 +13,8 @@ export class SongLibrary {
   private container: HTMLElement;
   private onSongLoad: ((song: SongInfo) => void) | null = null;
   private grid: HTMLElement | null = null;
+  private renderGeneration = 0;
+  private loadGeneration = 0;
 
   constructor(app: PianoApp, container: HTMLElement) {
     this.app = app;
@@ -20,6 +22,7 @@ export class SongLibrary {
   }
 
   async render(): Promise<void> {
+    const generation = ++this.renderGeneration;
     this.container.innerHTML = '';
 
     const wrapper = document.createElement('div');
@@ -91,6 +94,8 @@ export class SongLibrary {
     } catch {
       // IndexedDB unavailable — ignore
     }
+
+    if (generation !== this.renderGeneration) return;
 
     const allSongs = this.app.getSongList();
     for (const song of allSongs) {
@@ -165,30 +170,36 @@ export class SongLibrary {
   }
 
   private async loadSong(song: SongInfo): Promise<void> {
+    const generation = ++this.loadGeneration;
     try {
-      this.container.classList.add('loading');
-      await this.app.loadSong(song.url);
-      this.onSongLoad?.(song);
+      this.setLoading(true);
+      const loaded = await this.app.loadSong(song.url);
+      if (!loaded || generation !== this.loadGeneration) return;
+      this.onSongLoad?.(this.app.getLoadedSong() ?? song);
       this.hide();
     } catch (err) {
+      if (generation !== this.loadGeneration) return;
       console.error('Failed to load song:', err);
       alert(`Failed to load "${song.title}". Please try another song.`);
     } finally {
-      this.container.classList.remove('loading');
+      if (generation === this.loadGeneration) this.setLoading(false);
     }
   }
 
   private async loadUploadedSong(song: SongInfo): Promise<void> {
+    const generation = ++this.loadGeneration;
     try {
-      this.container.classList.add('loading');
-      await this.app.loadSongById(song.id);
-      this.onSongLoad?.(song);
+      this.setLoading(true);
+      const loaded = await this.app.loadSongById(song.id);
+      if (!loaded || generation !== this.loadGeneration) return;
+      this.onSongLoad?.(this.app.getLoadedSong() ?? song);
       this.hide();
     } catch (err) {
+      if (generation !== this.loadGeneration) return;
       console.error('Failed to load uploaded song:', err);
       alert(`Failed to load "${song.title}".`);
     } finally {
-      this.container.classList.remove('loading');
+      if (generation === this.loadGeneration) this.setLoading(false);
     }
   }
 
@@ -204,9 +215,11 @@ export class SongLibrary {
       return;
     }
 
+    const generation = ++this.loadGeneration;
     try {
-      this.container.classList.add('loading');
-      await this.app.loadSong(file);
+      this.setLoading(true);
+      const loaded = await this.app.loadSong(file);
+      if (!loaded || generation !== this.loadGeneration) return;
       const song = this.app.getLoadedSong();
       if (song) {
         this.onSongLoad?.(song);
@@ -217,10 +230,11 @@ export class SongLibrary {
       }
       this.hide();
     } catch (err) {
+      if (generation !== this.loadGeneration) return;
       console.error('Failed to load uploaded file:', err);
       alert('Failed to load file. Ensure it is a valid MusicXML or MXL file.');
     } finally {
-      this.container.classList.remove('loading');
+      if (generation === this.loadGeneration) this.setLoading(false);
     }
   }
 
@@ -229,9 +243,9 @@ export class SongLibrary {
   }
 
   async show(): Promise<void> {
-    // Re-render to update active song indicator and progress badges
-    await this.render();
     this.container.style.display = 'block';
+    // Re-render to update active song indicator and progress badges.
+    await this.render();
   }
 
   hide(): void {
@@ -240,5 +254,10 @@ export class SongLibrary {
 
   isVisible(): boolean {
     return this.container.style.display !== 'none';
+  }
+
+  private setLoading(loading: boolean): void {
+    this.container.classList.toggle('loading', loading);
+    this.container.setAttribute('aria-busy', String(loading));
   }
 }
