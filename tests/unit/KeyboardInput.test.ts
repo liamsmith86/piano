@@ -164,6 +164,11 @@ describe('KeyboardInput', () => {
     );
   });
 
+  it('maps K to B3 without conflicting with the metronome shortcut', () => {
+    expect(KeyboardInput.getMidiForKey('k')).toBe(59);
+    expect(KeyboardInput.getMidiForKey('m')).toBeUndefined();
+  });
+
   it('does not fire when typing in input fields', () => {
     const listener = vi.fn();
     im.addListener(listener);

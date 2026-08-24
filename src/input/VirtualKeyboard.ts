@@ -22,6 +22,7 @@ export class VirtualKeyboard {
   private highlightedNotes = new Set<number>();
   private activeNotes = new Set<number>();
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+  private feedbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   constructor(
     container: HTMLElement,
@@ -40,6 +41,7 @@ export class VirtualKeyboard {
     // Cancel any pending markCorrect/markWrong timers from previous render
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
+    this.feedbackTimers.clear();
     this.container.innerHTML = '';
     this.container.classList.add('virtual-keyboard');
     this.keyElements.clear();
@@ -175,21 +177,29 @@ export class VirtualKeyboard {
   }
 
   markCorrect(midi: number): void {
-    this.keyElements.get(midi)?.classList.add('vk-correct');
-    const id = setTimeout(() => {
-      this.keyElements.get(midi)?.classList.remove('vk-correct');
-      this.pendingTimers.delete(id);
-    }, 500);
-    this.pendingTimers.add(id);
+    this.showFeedback(midi, 'vk-correct');
   }
 
   markWrong(midi: number): void {
-    this.keyElements.get(midi)?.classList.add('vk-wrong');
+    this.showFeedback(midi, 'vk-wrong');
+  }
+
+  private showFeedback(midi: number, className: 'vk-correct' | 'vk-wrong'): void {
+    const existingTimer = this.feedbackTimers.get(midi);
+    if (existingTimer !== undefined) {
+      clearTimeout(existingTimer);
+      this.pendingTimers.delete(existingTimer);
+    }
+    const key = this.keyElements.get(midi);
+    key?.classList.remove('vk-correct', 'vk-wrong');
+    key?.classList.add(className);
     const id = setTimeout(() => {
-      this.keyElements.get(midi)?.classList.remove('vk-wrong');
+      this.keyElements.get(midi)?.classList.remove(className);
       this.pendingTimers.delete(id);
+      if (this.feedbackTimers.get(midi) === id) this.feedbackTimers.delete(midi);
     }, 500);
     this.pendingTimers.add(id);
+    this.feedbackTimers.set(midi, id);
   }
 
   setShowNoteNames(show: boolean): void {
@@ -235,6 +245,7 @@ export class VirtualKeyboard {
     this.releaseActiveNotes();
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
+    this.feedbackTimers.clear();
     this.container.innerHTML = '';
     this.keyElements.clear();
     this.highlightedNotes.clear();

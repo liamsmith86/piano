@@ -23,7 +23,7 @@ export class ShortcutsHelp {
       <div class="shortcuts-panel">
         <div class="sh-header">
           <h2>Keyboard Shortcuts</h2>
-          <button class="sh-close">&times;</button>
+          <button type="button" class="sh-close" aria-label="Close keyboard shortcuts">&times;</button>
         </div>
         <div class="sh-grid">
           <div class="sh-section">
@@ -39,7 +39,9 @@ export class ShortcutsHelp {
             <div class="sh-row"><kbd>X</kbd><span>D3</span></div>
             <div class="sh-row"><kbd>D</kbd><span>D#3</span></div>
             <div class="sh-row"><kbd>C</kbd><span>E3</span></div>
-            <div class="sh-row"><kbd>V</kbd> - <kbd>M</kbd><span>F3 - B3</span></div>
+            <div class="sh-row"><kbd>V G B H N J</kbd><span>F3 - A#3</span></div>
+            <div class="sh-row"><kbd>K</kbd><span>B3</span></div>
+            <div class="sh-row"><kbd>,</kbd><span>C4</span></div>
           </div>
           <div class="sh-section">
             <h3>Piano Keys (Upper Octave)</h3>
@@ -69,5 +71,9 @@ export class ShortcutsHelp {
   hide(): void {
     this.overlay?.remove();
     this.overlay = null;
+  }
+
+  isVisible(): boolean {
+    return this.overlay !== null;
   }
 }

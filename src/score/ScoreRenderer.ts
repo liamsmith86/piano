@@ -44,6 +44,8 @@ export class ScoreRenderer {
     this.wrongNoteOverlay = null;
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
+    this.currentWrongMarker = null;
+    this.wrongMarkerTimerId = null;
     if (this.osmd) {
       this.osmd.clear();
       this.osmd = null;
@@ -307,6 +309,8 @@ export class ScoreRenderer {
     }
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
+    this.currentWrongMarker = null;
+    this.wrongMarkerTimerId = null;
   }
 
   setHand(hand: HandSelection): void {

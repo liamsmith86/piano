@@ -354,6 +354,8 @@ async function main(): Promise<void> {
         app.stop();
         practiceComplete.hide();
         countIn.hide();
+        settingsPanel.hide();
+        shortcutsHelp.hide();
         break;
       case 'm':
         app.toggleMetronome();

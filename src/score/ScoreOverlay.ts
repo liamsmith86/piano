@@ -421,14 +421,20 @@ export class ScoreOverlay {
   ): void {
     // Group timeline events by measure and collect all MIDI notes per beat position
     // We only render a chord symbol at positions where there are 3+ unique pitch classes
-    const rendered = new Set<string>(); // "measure:beat" dedup key
+    const rendered = new Set<string>();
 
     for (const event of timeline) {
       const allMidis = event.notes.map(n => n.midi);
       const chord = detectChord(allMidis);
       if (!chord) continue;
 
-      const key = `${event.measureNumber}:${event.index}`;
+      const sourceNoteIds = event.notes
+        .map(note => note.sourceNoteId)
+        .filter((id): id is number => id !== undefined)
+        .sort((a, b) => a - b);
+      const key = sourceNoteIds.length > 0
+        ? sourceNoteIds.join(':')
+        : `${event.measureNumber}:${event.index}`;
       if (rendered.has(key)) continue;
       rendered.add(key);
 
@@ -447,8 +453,10 @@ export class ScoreOverlay {
             for (const gNote of ve.notes) {
               const src = gNote.sourceNote;
               if (!src || src.isRest?.()) continue;
-              const midi = ((src.Pitch?.getHalfTone?.() ?? src.Pitch?.halfTone ?? 0) + 12);
-              if (allMidis.includes(midi)) {
+              const matchesEvent = sourceNoteIds.length > 0
+                ? sourceNoteIds.includes(getSourceNoteId(src))
+                : allMidis.includes((src.Pitch?.getHalfTone?.() ?? src.Pitch?.halfTone ?? 0) + 12);
+              if (matchesEvent) {
                 targetEntry = entry;
                 break;
               }

@@ -116,6 +116,21 @@ describe('VirtualKeyboard', () => {
     vi.useRealTimers();
   });
 
+  it('restarts feedback timing when the same key is marked again', () => {
+    vi.useFakeTimers();
+    const key = container.querySelector('[data-midi="48"]') as HTMLElement;
+
+    vk.markCorrect(48);
+    vi.advanceTimersByTime(300);
+    vk.markCorrect(48);
+    vi.advanceTimersByTime(300);
+    expect(key.classList.contains('vk-correct')).toBe(true);
+
+    vi.advanceTimersByTime(201);
+    expect(key.classList.contains('vk-correct')).toBe(false);
+    vi.useRealTimers();
+  });
+
   it('keys have data-midi attribute', () => {
     const keys = container.querySelectorAll('[data-midi]');
     expect(keys.length).toBeGreaterThan(0);
