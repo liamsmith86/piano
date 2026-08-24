@@ -36,11 +36,53 @@ const DEFAULTS: AppSettings = {
   showChords: false,
 };
 
+type BooleanSettingKey = {
+  [K in keyof AppSettings]: AppSettings[K] extends boolean ? K : never;
+}[keyof AppSettings];
+
+const BOOLEAN_SETTING_KEYS: readonly BooleanSettingKey[] = [
+  'showNoteNames',
+  'showNextNote',
+  'showVirtualKeyboard',
+  'countIn',
+  'accompaniment',
+  'autoScrollKeyboard',
+  'wrongNoteLabels',
+  'highlightExpectedKeys',
+  'autoAdvance',
+  'showNoteNamesOnScore',
+  'showAllAccidentals',
+  'showFingering',
+  'showChords',
+];
+
+function normalizeSettings(value: unknown): AppSettings {
+  const settings = { ...DEFAULTS };
+  if (typeof value !== 'object' || value === null) return settings;
+
+  const candidate = value as Record<string, unknown>;
+  for (const key of BOOLEAN_SETTING_KEYS) {
+    if (typeof candidate[key] === 'boolean') settings[key] = candidate[key];
+  }
+
+  if (typeof candidate.countInBeats === 'number' && Number.isFinite(candidate.countInBeats)) {
+    settings.countInBeats = Math.max(1, Math.min(8, Math.trunc(candidate.countInBeats)));
+  }
+  if (typeof candidate.autoAdvanceSeconds === 'number' && Number.isFinite(candidate.autoAdvanceSeconds)) {
+    settings.autoAdvanceSeconds = Math.max(1, Math.min(60, candidate.autoAdvanceSeconds));
+  }
+  return settings;
+}
+
+function isBooleanSettingKey(key: string | undefined): key is BooleanSettingKey {
+  return key !== undefined && (BOOLEAN_SETTING_KEYS as readonly string[]).includes(key);
+}
+
 export function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
-      return { ...DEFAULTS, ...JSON.parse(raw) };
+      return normalizeSettings(JSON.parse(raw));
     }
   } catch (err) {
     console.warn('Failed to load settings:', err);
@@ -50,7 +92,7 @@ export function loadSettings(): AppSettings {
 
 export function saveSettings(settings: AppSettings): void {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(settings)));
   } catch (err) {
     console.warn('Failed to save settings:', err);
   }
@@ -80,7 +122,7 @@ export class SettingsPanel {
       <div class="settings-panel">
         <div class="sp-header">
           <h2>Settings</h2>
-          <button class="sp-close">&times;</button>
+          <button type="button" class="sp-close" aria-label="Close settings">&times;</button>
         </div>
 
         <div class="sp-section">
@@ -202,10 +244,12 @@ export class SettingsPanel {
     // Toggle handlers
     this.overlay.querySelectorAll('[data-setting]').forEach(input => {
       (input as HTMLInputElement).addEventListener('change', () => {
-        const key = (input as HTMLInputElement).dataset.setting as keyof AppSettings;
-        (this.settings as any)[key] = (input as HTMLInputElement).checked;
+        const element = input as HTMLInputElement;
+        const key = element.dataset.setting;
+        if (!isBooleanSettingKey(key)) return;
+        this.settings[key] = element.checked;
         saveSettings(this.settings);
-        this.onChange?.(this.settings);
+        this.onChange?.({ ...this.settings });
       });
     });
 
@@ -274,7 +318,7 @@ export class SettingsPanel {
         break;
     }
     saveSettings(this.settings);
-    this.onChange?.(this.settings);
+    this.onChange?.({ ...this.settings });
   }
 
   hide(): void {

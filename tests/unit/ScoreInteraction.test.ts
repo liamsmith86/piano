@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ScoreInteraction } from '../../src/score/ScoreInteraction';
 
 function createMockRenderer() {
@@ -52,6 +52,18 @@ describe('ScoreInteraction', () => {
     si.buildMeasureMap();
   });
 
+  afterEach(() => {
+    si.destroy();
+    container.remove();
+    vi.useRealTimers();
+  });
+
+  function dispatchPointer(type: string, x: number, y: number): void {
+    const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    Object.defineProperty(event, 'pointerId', { value: 1 });
+    container.dispatchEvent(event);
+  }
+
   it('builds measure map from OSMD graphic', () => {
     const regions = (si as any).measureRegions;
     expect(regions.length).toBe(4);
@@ -91,5 +103,37 @@ describe('ScoreInteraction', () => {
     const si2 = new ScoreInteraction(container, emptyRenderer);
     si2.buildMeasureMap();
     expect((si2 as any).measureRegions.length).toBe(0);
+    si2.destroy();
+  });
+
+  it('completes a drag selection without losing its start measure', () => {
+    const onSelect = vi.fn();
+    si.setOnSelect(onSelect);
+
+    dispatchPointer('pointerdown', 100, 190);
+    dispatchPointer('pointermove', 300, 190);
+    dispatchPointer('pointerup', 300, 190);
+
+    expect(si.getSelection()).toEqual({ startMeasure: 1, endMeasure: 2 });
+    expect(onSelect).toHaveBeenCalledWith({ startMeasure: 1, endMeasure: 2 });
+  });
+
+  it('clears a provisional selection when pointer input is cancelled', () => {
+    dispatchPointer('pointerdown', 100, 190);
+    dispatchPointer('pointermove', 300, 190);
+    dispatchPointer('pointercancel', 300, 190);
+
+    expect(si.getSelection()).toBeNull();
+    expect((si as any).isDragging).toBe(false);
+  });
+
+  it('rebuilds measure regions after a viewport resize', () => {
+    vi.useFakeTimers();
+    const buildSpy = vi.spyOn(si, 'buildMeasureMap');
+
+    window.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(151);
+
+    expect(buildSpy).toHaveBeenCalledOnce();
   });
 });

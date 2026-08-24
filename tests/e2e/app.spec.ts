@@ -91,6 +91,24 @@ test.describe('Song Loading', () => {
     expect(timeline[0].notes.length).toBeGreaterThan(0);
     expect(timeline[0].notes[0].midi).toBeGreaterThan(0);
   });
+
+  test('persists an uploaded score and can load it again by id', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+
+    await page.locator('.sl-file-input').setInputFiles('public/songs/MozartPianoSonata.mxl');
+    await page.waitForSelector('#score-container svg', { timeout: 15000 });
+
+    const uploadedId = await page.evaluate(() => window.pianoApp.getLoadedSong()?.id);
+    expect(uploadedId).toMatch(/^upload-/);
+
+    await page.evaluate(() => window.pianoApp.loadSong('/songs/BeetAnGeSample.mxl'));
+    const restored = await page.evaluate(id => window.pianoApp.loadSongById(id!), uploadedId);
+
+    expect(restored).toBe(true);
+    expect(await page.evaluate(() => window.pianoApp.getLoadedSong()?.id)).toBe(uploadedId);
+    expect(await page.evaluate(() => window.pianoApp.getNoteTimeline().length)).toBeGreaterThan(0);
+  });
 });
 
 test.describe('Mode Switching', () => {
@@ -374,10 +392,14 @@ test.describe('Loop Feature', () => {
     await page.evaluate(() => window.pianoApp.setLoop(3, 6));
     const loop = await page.evaluate(() => window.pianoApp.getLoopRange());
     expect(loop).toEqual({ start: 3, end: 6 });
+    await expect(page.locator('.tb-loop-toggle')).toBeChecked();
+    await expect(page.locator('.tb-loop-start')).toHaveValue('3');
+    await expect(page.locator('.tb-loop-end')).toHaveValue('6');
 
     await page.evaluate(() => window.pianoApp.clearLoop());
     const cleared = await page.evaluate(() => window.pianoApp.getLoopRange());
     expect(cleared).toBeNull();
+    await expect(page.locator('.tb-loop-toggle')).not.toBeChecked();
   });
 
   test('getTotalMeasures returns count after loading', async ({ page }) => {
@@ -426,8 +448,10 @@ test.describe('Metronome', () => {
 
     const enabled = await page.evaluate(() => window.pianoApp.toggleMetronome());
     expect(enabled).toBe(true);
+    await expect(page.locator('.tb-metronome-btn')).toHaveAttribute('aria-pressed', 'true');
 
     const disabled = await page.evaluate(() => window.pianoApp.toggleMetronome());
     expect(disabled).toBe(false);
+    await expect(page.locator('.tb-metronome-btn')).toHaveAttribute('aria-pressed', 'false');
   });
 });

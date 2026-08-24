@@ -1,6 +1,11 @@
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { NoteEvent } from '../types';
-import { buildPracticeStaffMap, getPracticeHand, type PracticeStaffMap } from './PracticePart';
+import {
+  buildPracticeStaffMap,
+  getPracticeHand,
+  getSourceNoteId,
+  type PracticeStaffMap,
+} from './PracticePart';
 
 // Map OSMD NoteEnum values to letter names
 const NOTE_ENUM_NAMES: Record<number, string> = {
@@ -141,16 +146,15 @@ export class ScoreOverlay {
       svgGroups.set(svg as SVGSVGElement, group);
     }
 
-    // Build a lookup from (midi, staff, measure) → finger for fingering display
-    // Use first occurrence only (standard convention for repeated sections)
-    const fingerLookup = new Map<string, number>();
+    // Match fingering to the exact OSMD source note. A MIDI/staff/measure key is
+    // ambiguous whenever a pitch repeats within a measure.
+    const fingerLookup = new Map<number, number>();
     if (this.showFingering && timeline) {
       for (const event of timeline) {
         for (const note of event.notes) {
           if (note.finger) {
-            const key = `${note.midi}:${note.staff}:${event.measureNumber}`;
-            if (!fingerLookup.has(key)) {
-              fingerLookup.set(key, note.finger);
+            if (note.sourceNoteId !== undefined && !fingerLookup.has(note.sourceNoteId)) {
+              fingerLookup.set(note.sourceNoteId, note.finger);
             }
           }
         }
@@ -213,7 +217,7 @@ export class ScoreOverlay {
   private renderNoteOverlays(
     gNote: any,
     group: SVGGElement,
-    fingerLookup: Map<string, number>,
+    fingerLookup: Map<number, number>,
     keyMap: Map<number, any> | null,
     measureIdx: number,
     practiceStaffHands: PracticeStaffMap,
@@ -373,9 +377,7 @@ export class ScoreOverlay {
 
     // Feature 3: Fingering numbers — above noteheads (both staves), with circled style
     if (this.showFingering) {
-      const midiNumber = (pitch.getHalfTone?.() ?? pitch.halfTone ?? 0) + 12;
-      const key = `${midiNumber}:${staff}:${measureIdx}`;
-      const finger = fingerLookup.get(key);
+      const finger = fingerLookup.get(getSourceNoteId(sourceNote));
 
       if (finger) {
         const fontSize = 9;

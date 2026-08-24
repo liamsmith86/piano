@@ -27,6 +27,7 @@ export class PracticeMode {
   private autoAdvanceTimeout: number = 0;
   private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
   private wrongNoteLabels = true;
+  private highlightExpectedKeys = true;
   private sessionGeneration = 0;
 
   private hitCount = new Map<number, number>(); // midi → count of hits
@@ -279,7 +280,10 @@ export class PracticeMode {
         staffByMidi.set(n.midi, n.staff);
       }
     }
-    this.virtualKeyboard?.highlightKeys(this.expectedMidis, staffByMidi);
+    this.virtualKeyboard?.highlightKeys(
+      this.highlightExpectedKeys ? this.expectedMidis : [],
+      staffByMidi,
+    );
     // Highlight noteheads at current cursor position in blue
     this.renderer.highlightCurrentNotes('#3b82f6');
   }
@@ -345,6 +349,11 @@ export class PracticeMode {
 
   setWrongNoteLabels(enabled: boolean): void {
     this.wrongNoteLabels = enabled;
+  }
+
+  setHighlightExpectedKeys(enabled: boolean): void {
+    this.highlightExpectedKeys = enabled;
+    if (this.active) this.highlightExpected();
   }
 
   isAccompanimentEnabled(): boolean {

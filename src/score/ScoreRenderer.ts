@@ -543,9 +543,9 @@ export class ScoreRenderer {
     this.wrongNoteOverlay.appendChild(marker);
     this.currentWrongMarker = marker;
 
-    // Quick fade: show for 400ms, then fade out over 200ms
+    // Keep feedback visible long enough to identify the note, then fade it out.
     marker.style.opacity = '1';
-    marker.style.transition = 'opacity 0.2s ease-out';
+    marker.style.transition = 'opacity 0.3s ease-out';
     const fadeId = setTimeout(() => {
       marker.style.opacity = '0';
       this.pendingTimers.delete(fadeId);
@@ -555,9 +555,9 @@ export class ScoreRenderer {
         }
         marker.remove();
         this.pendingTimers.delete(removeId);
-      }, 200);
+      }, 300);
       this.pendingTimers.add(removeId);
-    }, 400);
+    }, 1500);
     this.pendingTimers.add(fadeId);
     this.wrongMarkerTimerId = fadeId;
   }

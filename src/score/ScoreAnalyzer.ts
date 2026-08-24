@@ -1,7 +1,7 @@
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { NoteEvent, NoteInfo, TempoChange } from '../types';
 import { midiToNoteName } from '../types';
-import { buildPracticeStaffMap, getPracticeHand } from './PracticePart';
+import { buildPracticeStaffMap, getPracticeHand, getSourceNoteId } from './PracticePart';
 
 const DEFAULT_TEMPO = 120;
 
@@ -95,6 +95,7 @@ export class ScoreAnalyzer {
               staff,
               voice: voiceEntry.ParentVoice?.VoiceId ?? 1,
               tied: isTiedContinuation,
+              sourceNoteId: getSourceNoteId(note),
             };
 
             // Skip notes that are tied continuations (not the start of the tie)

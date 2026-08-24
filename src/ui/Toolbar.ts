@@ -60,7 +60,7 @@ export class Toolbar {
           <button class="tb-btn tb-stop-btn" title="Stop" aria-label="Stop playback">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
           </button>
-          <button class="tb-btn tb-metronome-btn" title="Metronome" aria-label="Toggle metronome">
+          <button class="tb-btn tb-metronome-btn" title="Metronome" aria-label="Toggle metronome" aria-pressed="false">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2L8 22h8L12 2z"/><line x1="12" y1="8" x2="16" y2="4"/>
             </svg>
@@ -149,7 +149,7 @@ export class Toolbar {
     this.modeToggle = this.container.querySelector('.tb-mode-toggle')!;
     this.handBtns = Array.from(this.container.querySelectorAll('.tb-hand-btn'));
     this.tempoSlider = this.container.querySelector('.tb-tempo-slider')!;
-      this.accompToggle = this.container.querySelector('.tb-accomp-toggle')!;
+    this.accompToggle = this.container.querySelector('.tb-accomp-toggle')!;
     this.accompRow = this.container.querySelector('.tb-accomp-row')!;
     this.metronomeBtn = this.container.querySelector('.tb-metronome-btn')!;
     this.statsDisplay = this.container.querySelector('.tb-stats')!;
@@ -213,7 +213,10 @@ export class Toolbar {
       btn.addEventListener('click', () => {
         const hand = btn.dataset.hand as HandSelection;
         this.app.setHand(hand);
-        this.handBtns.forEach(b => b.classList.remove('active'));
+        this.handBtns.forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
         btn.classList.add('active');
         const mode = this.app.getMode();
         this.accompRow.style.display = (mode === 'practice' && hand !== 'both') ? 'flex' : 'none';
@@ -309,6 +312,17 @@ export class Toolbar {
     // Listen for app events to update UI
     this.app.on('playbackStateChanged', () => this.updatePlayButton());
     this.app.on('practiceStateChanged', () => this.updatePlayButton());
+    this.app.on('loopChanged', ({ range }) => {
+      this.loopToggle.checked = range !== null;
+      if (range) {
+        this.loopStartInput.value = String(range.start);
+        this.loopEndInput.value = String(range.end);
+      }
+    });
+    this.app.on('metronomeChanged', ({ enabled }) => {
+      this.metronomeBtn.classList.toggle('active', enabled);
+      this.metronomeBtn.setAttribute('aria-pressed', String(enabled));
+    });
     this.app.on('cursorAdvanced', () => this.updateProgress());
     this.app.on('loaded', () => {
       const song = this.app.getLoadedSong();
@@ -340,7 +354,10 @@ export class Toolbar {
       this.updateModeUI();
     });
     this.app.on('handChanged', ({ hand }) => {
-      this.handBtns.forEach(b => b.classList.remove('active'));
+      this.handBtns.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', String(b.dataset.hand === hand));
+      });
       this.handBtns.find(b => b.dataset.hand === hand)?.classList.add('active');
       const mode = this.app.getMode();
       this.accompRow.style.display = (mode === 'practice' && hand !== 'both') ? 'flex' : 'none';
@@ -384,10 +401,17 @@ export class Toolbar {
     const pauseIcon = this.playBtn.querySelector('.icon-pause') as HTMLElement;
     playIcon.style.display = isPlaying ? 'none' : 'block';
     pauseIcon.style.display = isPlaying ? 'block' : 'none';
+    this.playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
   }
 
   private updateModeUI(): void {
     const mode = this.app.getMode();
+    this.modeToggle.querySelectorAll<HTMLButtonElement>('.tb-mode-btn').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+    });
+    this.handBtns.forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.hand === this.app.getHand()));
+    });
     this.statsDisplay.style.display = mode === 'practice' ? 'flex' : 'none';
     this.loopRow.style.display = mode === 'practice' ? 'flex' : 'none';
     // Accompaniment is only relevant in practice mode with a single hand selected

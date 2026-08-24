@@ -18,6 +18,7 @@ export class VirtualKeyboard {
   private numOctaves: number;
   private keyElements = new Map<number, HTMLElement>();
   private showNoteNames = true;
+  private autoScroll = true;
   private highlightedNotes = new Set<number>();
   private activeNotes = new Set<number>();
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -167,7 +168,7 @@ export class VirtualKeyboard {
     }
 
     // Auto-scroll to the highlighted notes
-    if (midiNumbers.length > 0) {
+    if (this.autoScroll && midiNumbers.length > 0) {
       const midMidi = midiNumbers[Math.floor(midiNumbers.length / 2)];
       this.scrollToNote(midMidi);
     }
@@ -195,6 +196,10 @@ export class VirtualKeyboard {
     if (show === this.showNoteNames) return;
     this.showNoteNames = show;
     this.render(); // re-render
+  }
+
+  setAutoScroll(enabled: boolean): void {
+    this.autoScroll = enabled;
   }
 
   scrollToNote(midi: number): void {

@@ -21,11 +21,13 @@ export class ScoreInteraction {
   private renderer: ScoreRenderer;
   private measureRegions: MeasureRegion[] = [];
   private selectionOverlay: HTMLElement;
-  private selectionHighlight: HTMLElement;
 
   private isDragging = false;
   private dragStartMeasure: number | null = null;
+  private activePointerId: number | null = null;
   private currentSelection: ScoreSelection | null = null;
+  private initialized = false;
+  private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onSelect: SelectionCallback | null = null;
   private onJump: JumpCallback | null = null;
@@ -33,6 +35,8 @@ export class ScoreInteraction {
   private handlePointerDown: (e: PointerEvent) => void;
   private handlePointerMove: (e: PointerEvent) => void;
   private handlePointerUp: (e: PointerEvent) => void;
+  private handlePointerCancel: (e: PointerEvent) => void;
+  private handleResize: () => void;
 
   constructor(container: HTMLElement, renderer: ScoreRenderer) {
     this.container = container;
@@ -43,12 +47,6 @@ export class ScoreInteraction {
     this.selectionOverlay.className = 'score-selection-overlay';
     this.container.appendChild(this.selectionOverlay);
 
-    // Highlight element
-    this.selectionHighlight = document.createElement('div');
-    this.selectionHighlight.className = 'score-selection-highlight';
-    this.selectionHighlight.style.display = 'none';
-    this.selectionOverlay.appendChild(this.selectionHighlight);
-
     // Pointer events (work for both mouse and touch)
     this.handlePointerDown = (e: PointerEvent) => {
       const measure = this.getMeasureAtPoint(e.clientX, e.clientY);
@@ -56,9 +54,14 @@ export class ScoreInteraction {
 
       this.isDragging = true;
       this.dragStartMeasure = measure;
+      this.activePointerId = e.pointerId;
       this.currentSelection = null;
       this.updateSelectionVisual(measure, measure);
-      this.container.setPointerCapture(e.pointerId);
+      try {
+        this.container.setPointerCapture?.(e.pointerId);
+      } catch {
+        // Synthetic pointer events and older browsers may not allow capture.
+      }
       e.preventDefault();
     };
 
@@ -77,16 +80,17 @@ export class ScoreInteraction {
     this.handlePointerUp = (e: PointerEvent) => {
       if (!this.isDragging || this.dragStartMeasure === null) return;
 
+      const dragStartMeasure = this.dragStartMeasure;
       const measure = this.getMeasureAtPoint(e.clientX, e.clientY);
-      this.isDragging = false;
+      this.finishDrag();
 
       if (measure === null) {
         this.clearSelection();
         return;
       }
 
-      const start = Math.min(this.dragStartMeasure, measure);
-      const end = Math.max(this.dragStartMeasure, measure);
+      const start = Math.min(dragStartMeasure, measure);
+      const end = Math.max(dragStartMeasure, measure);
 
       if (start === end) {
         // Single click — jump to measure
@@ -98,29 +102,52 @@ export class ScoreInteraction {
         this.updateSelectionVisual(start, end);
         this.onSelect?.(this.currentSelection);
       }
+    };
 
-      this.dragStartMeasure = null;
-      this.container.releasePointerCapture(e.pointerId);
+    this.handlePointerCancel = () => {
+      if (!this.isDragging) return;
+      this.finishDrag();
+      this.currentSelection = null;
+      this.hideAllVisuals();
+    };
+
+    this.handleResize = () => {
+      if (this.resizeTimer !== null) clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => {
+        this.resizeTimer = null;
+        this.buildMeasureMap();
+      }, 150);
     };
   }
 
   init(): void {
+    if (this.initialized) return;
+    this.initialized = true;
     this.container.addEventListener('pointerdown', this.handlePointerDown);
     this.container.addEventListener('pointermove', this.handlePointerMove);
     this.container.addEventListener('pointerup', this.handlePointerUp);
+    this.container.addEventListener('pointercancel', this.handlePointerCancel);
+    this.container.addEventListener('lostpointercapture', this.handlePointerCancel);
+    window.addEventListener('resize', this.handleResize);
   }
 
   buildMeasureMap(): void {
     this.measureRegions = [];
     const osmd = this.renderer.getOSMD() as any;
-    if (!osmd?.graphic?.measureList) return;
+    if (!osmd?.graphic?.measureList) {
+      this.hideAllVisuals();
+      return;
+    }
 
     const containerRect = this.container.getBoundingClientRect();
     const measureList = osmd.graphic.measureList;
 
     // OSMD units to pixel scale: find the SVG element and compute scale
     const svg = this.container.querySelector('svg');
-    if (!svg) return;
+    if (!svg) {
+      this.hideAllVisuals();
+      return;
+    }
     const svgRect = svg.getBoundingClientRect();
     const svgViewBox = svg.getAttribute('viewBox');
     let scaleX = 1, scaleY = 1, svgOffsetX = 0, svgOffsetY = 0;
@@ -168,6 +195,13 @@ export class ScoreInteraction {
           bottom: maxY,
         });
       }
+    }
+
+    if (this.currentSelection) {
+      this.updateSelectionVisual(
+        this.currentSelection.startMeasure,
+        this.currentSelection.endMeasure,
+      );
     }
   }
 
@@ -278,8 +312,24 @@ export class ScoreInteraction {
   }
 
   clearSelection(): void {
+    this.finishDrag();
     this.currentSelection = null;
     this.hideAllVisuals();
+  }
+
+  private finishDrag(): void {
+    this.isDragging = false;
+    this.dragStartMeasure = null;
+    const pointerId = this.activePointerId;
+    this.activePointerId = null;
+    if (pointerId === null) return;
+    try {
+      if (!this.container.hasPointerCapture || this.container.hasPointerCapture(pointerId)) {
+        this.container.releasePointerCapture?.(pointerId);
+      }
+    } catch {
+      // The browser may already have released capture after a cancellation.
+    }
   }
 
   getSelection(): ScoreSelection | null {
@@ -295,9 +345,20 @@ export class ScoreInteraction {
   }
 
   destroy(): void {
+    this.clearSelection();
+    if (!this.initialized) {
+      this.selectionOverlay.remove();
+      return;
+    }
+    this.initialized = false;
     this.container.removeEventListener('pointerdown', this.handlePointerDown);
     this.container.removeEventListener('pointermove', this.handlePointerMove);
     this.container.removeEventListener('pointerup', this.handlePointerUp);
+    this.container.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.container.removeEventListener('lostpointercapture', this.handlePointerCancel);
+    window.removeEventListener('resize', this.handleResize);
+    if (this.resizeTimer !== null) clearTimeout(this.resizeTimer);
+    this.resizeTimer = null;
     this.selectionOverlay.remove();
   }
 }

@@ -8,6 +8,8 @@ export interface NoteInfo {
   voice: number;
   tied: boolean;
   finger?: 1 | 2 | 3 | 4 | 5;
+  /** Stable per-score identity used to align OSMD graphical notes with analysis. */
+  sourceNoteId?: number;
 }
 
 export interface NoteEvent {
@@ -74,6 +76,8 @@ export interface AppEventMap {
   handChanged: { hand: HandSelection };
   playbackStateChanged: { state: PlaybackState };
   practiceStateChanged: { active: boolean };
+  loopChanged: { range: { start: number; end: number } | null };
+  metronomeChanged: { enabled: boolean };
   inputNote: InputEvent;
 }
 

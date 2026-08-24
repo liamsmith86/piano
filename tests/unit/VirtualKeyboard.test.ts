@@ -82,6 +82,16 @@ describe('VirtualKeyboard', () => {
     expect(key50?.classList.contains('vk-highlight')).toBe(true);
   });
 
+  it('respects the auto-scroll setting', () => {
+    const key = container.querySelector('[data-midi="48"]') as HTMLElement;
+    key.scrollIntoView = vi.fn();
+    vk.setAutoScroll(false);
+
+    vk.highlightKeys([48]);
+
+    expect(key.scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('markCorrect adds and removes class', async () => {
     vi.useFakeTimers();
     vk.markCorrect(48);

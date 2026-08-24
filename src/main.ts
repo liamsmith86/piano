@@ -39,6 +39,7 @@ async function main(): Promise<void> {
   const noteDisplay = new NoteDisplay(noteDisplayContainer);
   const settingsPanel = new SettingsPanel(appEl);
   const shortcutsHelp = new ShortcutsHelp(appEl);
+  let updateNoteDisplay = () => {};
 
   // Keyboard visibility: hidden by default, auto-shows in practice mode
   const updateKeyboardVisibility = () => {
@@ -51,10 +52,13 @@ async function main(): Promise<void> {
   // Apply settings
   const applySettings = (settings: AppSettings) => {
     app.virtualKeyboard?.setShowNoteNames(settings.showNoteNames);
+    app.virtualKeyboard?.setAutoScroll(settings.autoScrollKeyboard);
     app.setAccompaniment(settings.accompaniment);
     app.setAutoAdvance(settings.autoAdvance ? settings.autoAdvanceSeconds * 1000 : 0);
     app.setWrongNoteLabels(settings.wrongNoteLabels);
+    app.setHighlightExpectedKeys(settings.highlightExpectedKeys);
     updateKeyboardVisibility();
+    updateNoteDisplay();
     app.updateOverlays({
       showNoteNamesOnScore: settings.showNoteNamesOnScore,
       showAllAccidentals: settings.showAllAccidentals,
@@ -214,7 +218,7 @@ async function main(): Promise<void> {
   });
 
   // Update note display during practice mode
-  const updateNoteDisplay = () => {
+  updateNoteDisplay = () => {
     const settings = settingsPanel.getSettings();
     if (app.getMode() === 'practice' && app.practiceMode.isActive()) {
       const expected = app.practiceMode.getExpectedNotes();
@@ -222,10 +226,6 @@ async function main(): Promise<void> {
         noteDisplay.show(expected, expected.length > 1);
       } else {
         noteDisplay.hide();
-      }
-      // Respect highlightExpectedKeys setting
-      if (!settings.highlightExpectedKeys && app.virtualKeyboard) {
-        app.virtualKeyboard.highlightKeys([]);
       }
     } else {
       noteDisplay.hide();

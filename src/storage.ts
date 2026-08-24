@@ -14,75 +14,97 @@ interface StoredSong {
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(SONGS_STORE)) {
         db.createObjectStore(SONGS_STORE, { keyPath: 'id' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      if (blocked) {
+        request.result.close();
+      } else {
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      }
+    };
+    request.onerror = () => reject(request.error ?? new Error('Failed to open song storage'));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error('Song storage upgrade is blocked by another tab'));
+    };
+  });
+}
+
+async function runRequest<T>(
+  mode: IDBTransactionMode,
+  createRequest: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    let transaction: IDBTransaction;
+    let request: IDBRequest<T>;
+    try {
+      transaction = db.transaction(SONGS_STORE, mode);
+      request = createRequest(transaction.objectStore(SONGS_STORE));
+    } catch (error) {
+      db.close();
+      reject(error);
+      return;
+    }
+    let result: T;
+    let settled = false;
+
+    const fail = (error: DOMException | null): void => {
+      if (settled) return;
+      settled = true;
+      db.close();
+      reject(error ?? new Error('Song storage transaction failed'));
+    };
+
+    request.onsuccess = () => {
+      result = request.result;
+    };
+    request.onerror = () => fail(request.error);
+    transaction.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      db.close();
+      resolve(result);
+    };
+    transaction.onerror = () => fail(transaction.error);
+    transaction.onabort = () => fail(transaction.error);
   });
 }
 
 export async function saveUploadedSong(id: string, title: string, data: ArrayBuffer): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SONGS_STORE, 'readwrite');
-    const store = tx.objectStore(SONGS_STORE);
-    store.put({ id, title, data, uploadedAt: Date.now() } satisfies StoredSong);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
-  });
+  await runRequest('readwrite', store => store.put({
+    id,
+    title,
+    data,
+    uploadedAt: Date.now(),
+  } satisfies StoredSong));
 }
 
 export async function getUploadedSongs(): Promise<{ info: SongInfo; data: ArrayBuffer }[]> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SONGS_STORE, 'readonly');
-    const store = tx.objectStore(SONGS_STORE);
-    const request = store.getAll();
-    request.onsuccess = () => {
-      const stored: StoredSong[] = request.result;
-      db.close();
-      resolve(
-        stored.map(s => ({
-          info: {
-            id: s.id,
-            title: s.title,
-            url: '',
-            source: 'uploaded' as const,
-          },
-          data: s.data,
-        }))
-      );
-    };
-    request.onerror = () => { db.close(); reject(request.error); };
-  });
+  const stored = await runRequest<StoredSong[]>('readonly', store => store.getAll());
+  return stored.map(song => ({
+    info: {
+      id: song.id,
+      title: song.title,
+      url: '',
+      source: 'uploaded' as const,
+    },
+    data: song.data,
+  }));
 }
 
 export async function deleteUploadedSong(id: string): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SONGS_STORE, 'readwrite');
-    const store = tx.objectStore(SONGS_STORE);
-    store.delete(id);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
-  });
+  await runRequest('readwrite', store => store.delete(id));
 }
 
 export async function getUploadedSongData(id: string): Promise<ArrayBuffer | null> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SONGS_STORE, 'readonly');
-    const store = tx.objectStore(SONGS_STORE);
-    const request = store.get(id);
-    request.onsuccess = () => {
-      const stored: StoredSong | undefined = request.result;
-      db.close();
-      resolve(stored?.data ?? null);
-    };
-    request.onerror = () => { db.close(); reject(request.error); };
-  });
+  const stored = await runRequest<StoredSong | undefined>('readonly', store => store.get(id));
+  return stored?.data ?? null;
 }

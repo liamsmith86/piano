@@ -27,6 +27,17 @@ interface SourceNoteLike {
 }
 
 const PIANO_NAME_PATTERN = /piano|pianoforte|klavier|keyboard|\bpno\b/i;
+const sourceNoteIds = new WeakMap<object, number>();
+let nextSourceNoteId = 1;
+
+export function getSourceNoteId(sourceNote: object): number {
+  let id = sourceNoteIds.get(sourceNote);
+  if (id === undefined) {
+    id = nextSourceNoteId++;
+    sourceNoteIds.set(sourceNote, id);
+  }
+  return id;
+}
 
 /**
  * Select the score part that should drive piano playback and practice.

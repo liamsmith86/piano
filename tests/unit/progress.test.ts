@@ -126,4 +126,35 @@ describe('Progress Tracking', () => {
     store.set('piano-practice-history', '{invalid json');
     expect(getHistory()).toEqual([]);
   });
+
+  it('filters malformed sessions and normalizes numeric ranges', () => {
+    store.set('piano-practice-history', JSON.stringify([
+      { broken: true },
+      makeSession({ accuracy: 150, correctCount: -2, elapsedSeconds: -1 }),
+    ]));
+
+    expect(getHistory()).toEqual([
+      expect.objectContaining({
+        accuracy: 100,
+        correctCount: 0,
+        elapsedSeconds: 0,
+      }),
+    ]);
+  });
+
+  it('does not throw when localStorage is unavailable', () => {
+    mockLocalStorage.setItem.mockImplementation(() => { throw new Error('blocked'); });
+    mockLocalStorage.removeItem.mockImplementation(() => { throw new Error('blocked'); });
+
+    expect(() => addSession(makeSession())).not.toThrow();
+    expect(() => clearHistory()).not.toThrow();
+
+    mockLocalStorage.setItem.mockImplementation((key: string, value: string) => { store.set(key, value); });
+    mockLocalStorage.removeItem.mockImplementation((key: string) => { store.delete(key); });
+  });
+
+  it('returns no recent sessions for a zero limit', () => {
+    addSession(makeSession());
+    expect(getRecentSessions(0)).toEqual([]);
+  });
 });

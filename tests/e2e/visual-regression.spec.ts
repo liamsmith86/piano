@@ -46,6 +46,7 @@ test.describe('Visual Regression: Note Coloring', () => {
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
     await page.waitForTimeout(300);
+    await page.locator('#score-container').evaluate(element => { element.scrollTop = 0; });
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('practice-blue-highlight.png', {
@@ -71,6 +72,7 @@ test.describe('Visual Regression: Note Coloring', () => {
       }
       await page.waitForTimeout(100);
     }
+    await page.locator('#score-container').evaluate(element => { element.scrollTop = 0; });
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('practice-green-notes.png', {
@@ -213,9 +215,15 @@ test.describe('Visual Regression: Wrong Note Marker', () => {
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
 
-    // Play a wrong note
-    await page.evaluate(() => window.pianoApp.simulateNoteInput(30));
-    await page.waitForTimeout(200);
+    // Play a nearby wrong note so the marker remains in the visible staff area.
+    await page.evaluate(() => {
+      const expected = window.pianoApp.getPracticeState().expectedNotes;
+      let wrong = (expected.length > 0 ? Math.max(...expected) : 60) + 1;
+      while (expected.includes(wrong)) wrong++;
+      window.pianoApp.simulateNoteInput(wrong);
+    });
+    await expect(page.locator('.wrong-note-marker')).toBeVisible();
+    await page.locator('#score-container').evaluate(element => { element.scrollTop = 0; });
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('wrong-note-marker.png', {

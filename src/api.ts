@@ -414,6 +414,10 @@ export class PianoApp {
     this.practiceMode.setWrongNoteLabels(enabled);
   }
 
+  setHighlightExpectedKeys(enabled: boolean): void {
+    this.practiceMode.setHighlightExpectedKeys(enabled);
+  }
+
   // --- Loop ---
 
   setLoop(startMeasure: number, endMeasure: number): void {
@@ -427,11 +431,13 @@ export class PianoApp {
 
     this.practiceMode.setLoop(start, end);
     this.playMode.setLoop(start, end);
+    this.events.emit('loopChanged', { range: { start, end } });
   }
 
   clearLoop(): void {
     this.practiceMode.clearLoop();
     this.playMode.clearLoop();
+    this.events.emit('loopChanged', { range: null });
   }
 
   getLoopRange(): { start: number; end: number } | null {
@@ -445,13 +451,16 @@ export class PianoApp {
   // --- Metronome ---
 
   toggleMetronome(): boolean {
+    let enabled: boolean;
     if (this.audio.isMetronomeEnabled()) {
       this.audio.stopMetronome();
-      return false;
+      enabled = false;
     } else {
       this.audio.startMetronome();
-      return true;
+      enabled = true;
     }
+    this.events.emit('metronomeChanged', { enabled });
+    return enabled;
   }
 
   // --- Events ---
