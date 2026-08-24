@@ -161,8 +161,7 @@ async function main(): Promise<void> {
     app.stop();
     app.clearLoop();
     app.scoreInteraction.clearSelection();
-    app.renderer.setCursorToMeasure(measure);
-    app.renderer.cursorShow();
+    app.seekToMeasure(measure);
   });
 
   app.scoreInteraction.setOnSelect((selection) => {

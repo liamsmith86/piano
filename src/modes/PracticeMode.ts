@@ -30,6 +30,7 @@ export class PracticeMode {
   private wrongNoteLabels = true;
   private highlightExpectedKeys = true;
   private sessionGeneration = 0;
+  private pendingStartMeasure: number | null = null;
 
   private hitCount = new Map<number, number>(); // midi → count of hits
   private expectedMidis: number[] = [];
@@ -109,6 +110,7 @@ export class PracticeMode {
 
   stop(): void {
     this.sessionGeneration++;
+    this.pendingStartMeasure = null;
     this.deactivate();
   }
 
@@ -402,6 +404,17 @@ export class PracticeMode {
     return this.filteredTimeline[this.cursorIndex] ?? null;
   }
 
+  seekToMeasure(measure: number): void {
+    const normalizedMeasure = Number.isFinite(measure) ? Math.max(1, Math.trunc(measure)) : 1;
+    this.pendingStartMeasure = normalizedMeasure;
+    const event = this.analyzer.getTimeline().find(candidate =>
+      candidate.measureNumber >= normalizedMeasure
+    );
+    this.renderer.setCursorToMeasure(event?.measureNumber ?? normalizedMeasure);
+    this.renderer.cursorShow();
+    if (this.active) this.restartActiveSession();
+  }
+
   /** Re-sync OSMD cursor after external reset (e.g., zoom re-render) */
   resyncCursor(): void {
     if (!this.active) return;
@@ -521,7 +534,14 @@ export class PracticeMode {
   }
 
   private resetSessionProgress(): void {
-    this.cursorIndex = 0;
+    const requestedMeasure = this.pendingStartMeasure;
+    this.pendingStartMeasure = null;
+    const requestedPosition = requestedMeasure === null
+      ? 0
+      : this.filteredTimeline.findIndex(event => event.measureNumber >= requestedMeasure);
+    this.cursorIndex = requestedPosition >= 0
+      ? requestedPosition
+      : Math.max(0, this.filteredTimeline.length - 1);
     this.hitCount.clear();
     this.expectedMidis = [];
     this.expectedCounts.clear();

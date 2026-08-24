@@ -284,12 +284,21 @@ export class PianoApp {
     return this.playMode.getCurrentIndex();
   }
 
-  setCursorPosition(index: number): void {
-    // For practice mode, restart at the given index
-    const event = this.analyzer.getEventAtIndex(index);
-    if (event) {
-      this.renderer.setCursorToMeasure(event.measureNumber);
+  seekToMeasure(measure: number): void {
+    if (this.currentMode === 'practice') {
+      this.practiceMode.seekToMeasure(measure);
+    } else {
+      this.playMode.seekToMeasure(measure);
     }
+  }
+
+  setCursorPosition(index: number): void {
+    const timeline = this.analyzer.filterByHand(this.currentHand);
+    if (timeline.length === 0) return;
+    const position = Number.isFinite(index)
+      ? Math.max(0, Math.min(timeline.length - 1, Math.trunc(index)))
+      : 0;
+    this.seekToMeasure(timeline[position].measureNumber);
   }
 
   getExpectedNotes(): NoteEvent[] {

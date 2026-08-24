@@ -27,6 +27,7 @@ function createMockRenderer() {
     clearNoteHighlights: vi.fn(),
     resetPlayedNotes: vi.fn(),
     scrollToCursor: vi.fn(),
+    setCursorToMeasure: vi.fn(),
   } as any;
 }
 
@@ -113,6 +114,27 @@ describe('PracticeMode', () => {
     expect(renderer.cursorReset).toHaveBeenCalled();
     expect(renderer.cursorShow).toHaveBeenCalled();
     expect(keyboard.highlightKeys).toHaveBeenCalledWith([60], expect.any(Map));
+  });
+
+  it('starts from a measure selected before practice begins', async () => {
+    const longerTimeline = makeTimeline([
+      { midis: [60] }, { midis: [61] }, { midis: [62] }, { midis: [63] },
+      { midis: [64] }, { midis: [65] },
+    ]);
+    pm = new PracticeMode(
+      audio,
+      renderer,
+      createMockAnalyzer(longerTimeline),
+      inputManager,
+      keyboard,
+      events,
+    );
+
+    pm.seekToMeasure(2);
+    await pm.start();
+
+    expect(pm.getCursorIndex()).toBe(4);
+    expect(pm.getExpectedNotes()).toEqual([64]);
   });
 
   it('advances cursor on correct note', async () => {

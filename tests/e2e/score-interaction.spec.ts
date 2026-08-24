@@ -88,6 +88,23 @@ test.describe('Score Interaction: Click-to-Jump', () => {
     rects = await page.locator('.score-selection-rect:visible').count();
     expect(rects).toBe(0);
   });
+
+  test('practice starts from a measure clicked while stopped', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+    await loadSong(page);
+    await page.evaluate(() => window.pianoApp.setMode('practice'));
+
+    const pos = await getMeasureCenter(page, 3);
+    if (!pos) { test.skip(); return; }
+    await page.mouse.click(pos.x, pos.y);
+    await page.evaluate(() => window.pianoApp.startPractice());
+
+    const measure = await page.evaluate(() =>
+      window.pianoApp.practiceMode.getCurrentEvent()?.measureNumber
+    );
+    expect(measure).toBeGreaterThanOrEqual(3);
+  });
 });
 
 test.describe('Score Interaction: Drag-to-Select', () => {

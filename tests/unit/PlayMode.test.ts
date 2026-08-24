@@ -200,6 +200,16 @@ describe('PlayMode', () => {
     expect(audio.stop).toHaveBeenCalled();
   });
 
+  it('uses a stopped seek as the next playback start position', async () => {
+    pm.seekToMeasure(3);
+
+    await pm.start();
+
+    const scheduledEvents = audio.schedulePlayback.mock.calls[0][0] as NoteEvent[];
+    expect(scheduledEvents[0].measureNumber).toBe(3);
+    expect(pm.getCurrentIndex()).toBe(8);
+  });
+
   it('cursor advance callback marks notes and moves cursor', async () => {
     await pm.start();
 

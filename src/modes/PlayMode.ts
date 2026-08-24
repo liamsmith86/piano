@@ -19,6 +19,7 @@ export class PlayMode {
   private lastMeasure = 0;        // for detecting repeats
   private eventByIndex = new Map<number, NoteEvent>(); // O(1) lookup by cursor step
   private playbackGeneration = 0;
+  private pendingStartMeasure: number | null = null;
 
   constructor(
     audio: AudioEngine,
@@ -66,14 +67,22 @@ export class PlayMode {
       return;
     }
 
-    // Position cursor at the start of the range
-    this.renderer.setCursorToMeasure(this.timeline[0].measureNumber);
+    const requestedMeasure = this.pendingStartMeasure;
+    this.pendingStartMeasure = null;
+    const requestedPosition = requestedMeasure === null
+      ? 0
+      : this.timeline.findIndex(event => event.measureNumber >= requestedMeasure);
+    const startPosition = requestedPosition >= 0 ? requestedPosition : this.timeline.length - 1;
+    const playbackTimeline = this.timeline.slice(startPosition);
+
+    // Position cursor at the requested start of the range.
+    this.renderer.setCursorToMeasure(playbackTimeline[0].measureNumber);
     this.renderer.cursorShow();
-    this.currentIndex = this.timeline[0].index;
-    this.timelinePosition = 0;
+    this.currentIndex = playbackTimeline[0].index;
+    this.timelinePosition = startPosition;
     this.lastMeasure = 0;
 
-    this.scheduleSegment(this.timeline, generation);
+    this.scheduleSegment(playbackTimeline, generation);
 
     this.audio.play();
     this.state = 'playing';
@@ -94,6 +103,7 @@ export class PlayMode {
     this.renderer.cursorReset();
     this.currentIndex = 0;
     this.timelinePosition = 0;
+    this.pendingStartMeasure = null;
     const stateChanged = this.state !== 'stopped';
     this.state = 'stopped';
     if (stateChanged) {
@@ -190,7 +200,8 @@ export class PlayMode {
     return Math.min(1, this.timelinePosition / this.timeline.length);
   }
 
-  async seekToMeasure(measure: number): Promise<void> {
+  seekToMeasure(measure: number): void {
+    const normalizedMeasure = Number.isFinite(measure) ? Math.max(1, Math.trunc(measure)) : 1;
     const wasPlaying = this.state === 'playing';
     const generation = ++this.playbackGeneration;
 
@@ -209,7 +220,7 @@ export class PlayMode {
     this.buildEventIndex();
 
     // Find position in timeline for this measure
-    const seekIdx = this.timeline.findIndex(e => e.measureNumber >= measure);
+    const seekIdx = this.timeline.findIndex(e => e.measureNumber >= normalizedMeasure);
     const startFrom = seekIdx >= 0 ? seekIdx : Math.max(0, this.timeline.length - 1);
 
     // Position cursor
@@ -234,6 +245,7 @@ export class PlayMode {
       // Highlight current notes
       this.renderer.highlightCurrentNotes('#3b82f6');
     } else {
+      this.pendingStartMeasure = this.timeline[startFrom]?.measureNumber ?? normalizedMeasure;
       this.state = 'stopped';
       this.events.emit('playbackStateChanged', { state: 'stopped' });
     }
