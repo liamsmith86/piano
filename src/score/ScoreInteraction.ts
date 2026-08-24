@@ -142,29 +142,57 @@ export class ScoreInteraction {
     const containerRect = this.container.getBoundingClientRect();
     const measureList = osmd.graphic.measureList;
 
-    // OSMD units to pixel scale: find the SVG element and compute scale
-    const svg = this.container.querySelector('svg');
-    if (!svg) {
+    const svgs = Array.from(this.container.querySelectorAll('svg'));
+    if (svgs.length === 0) {
       this.hideAllVisuals();
       return;
     }
-    const svgRect = svg.getBoundingClientRect();
-    const svgViewBox = svg.getAttribute('viewBox');
-    let scaleX = 1, scaleY = 1, svgOffsetX = 0, svgOffsetY = 0;
 
-    if (svgViewBox) {
-      const parts = svgViewBox.split(/\s+/).map(Number);
-      if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0 && parts.every(p => !isNaN(p))) {
-        scaleX = svgRect.width / parts[2];
-        scaleY = svgRect.height / parts[3];
-        svgOffsetX = svgRect.left - containerRect.left + this.container.scrollLeft;
-        svgOffsetY = svgRect.top - containerRect.top + this.container.scrollTop;
-      }
+    type SvgMetrics = {
+      scaleX: number;
+      scaleY: number;
+      offsetX: number;
+      offsetY: number;
+    };
+    const metricsBySvg = new Map<SVGElement, SvgMetrics>();
+    for (const svg of svgs) {
+      const rect = svg.getBoundingClientRect();
+      const viewBox = svg.getAttribute('viewBox')?.split(/\s+/).map(Number);
+      const hasViewBox = viewBox?.length === 4
+        && viewBox[2] > 0 && viewBox[3] > 0
+        && viewBox.every(Number.isFinite);
+      metricsBySvg.set(svg, {
+        scaleX: hasViewBox ? rect.width / viewBox[2] : 1,
+        scaleY: hasViewBox ? rect.height / viewBox[3] : 1,
+        offsetX: rect.left - containerRect.left + this.container.scrollLeft,
+        offsetY: rect.top - containerRect.top + this.container.scrollTop,
+      });
     }
+    const fallbackMetrics = metricsBySvg.get(svgs[0])!;
+
+    const findMeasureSvg = (staffMeasures: any[]): SVGElement | null => {
+      for (const measure of staffMeasures) {
+        for (const entry of measure?.staffEntries ?? []) {
+          for (const voice of entry?.graphicalVoiceEntries ?? []) {
+            for (const note of voice?.notes ?? []) {
+              try {
+                const svg = note.getSVGGElement?.()?.closest('svg');
+                if (svg) return svg;
+              } catch {
+                // Continue looking for a rendered note in this measure.
+              }
+            }
+          }
+        }
+      }
+      return null;
+    };
 
     for (let mIdx = 0; mIdx < measureList.length; mIdx++) {
       const staffMeasures = measureList[mIdx];
       if (!staffMeasures?.[0]?.boundingBox) continue;
+      const measureSvg = findMeasureSvg(staffMeasures);
+      const metrics = (measureSvg && metricsBySvg.get(measureSvg)) ?? fallbackMetrics;
 
       // Get bounding box from first staff, expand to include all staves
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -175,10 +203,10 @@ export class ScoreInteraction {
         const pos = bbox.AbsolutePosition;
         const size = bbox.Size;
 
-        const x = pos.x * 10 * scaleX + svgOffsetX;
-        const y = pos.y * 10 * scaleY + svgOffsetY;
-        const w = size.width * 10 * scaleX;
-        const h = size.height * 10 * scaleY;
+        const x = pos.x * 10 * metrics.scaleX + metrics.offsetX;
+        const y = pos.y * 10 * metrics.scaleY + metrics.offsetY;
+        const w = size.width * 10 * metrics.scaleX;
+        const h = size.height * 10 * metrics.scaleY;
 
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);

@@ -1,6 +1,9 @@
+import { DialogFocus } from './DialogFocus';
+
 export class ShortcutsHelp {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
+  private dialogFocus: DialogFocus | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -20,9 +23,9 @@ export class ShortcutsHelp {
     this.overlay = document.createElement('div');
     this.overlay.className = 'shortcuts-overlay';
     this.overlay.innerHTML = `
-      <div class="shortcuts-panel">
+      <div class="shortcuts-panel" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" tabindex="-1">
         <div class="sh-header">
-          <h2>Keyboard Shortcuts</h2>
+          <h2 id="shortcuts-title">Keyboard Shortcuts</h2>
           <button type="button" class="sh-close" aria-label="Close keyboard shortcuts">&times;</button>
         </div>
         <div class="sh-grid">
@@ -66,9 +69,14 @@ export class ShortcutsHelp {
     });
 
     this.container.appendChild(this.overlay);
+    const panel = this.overlay.querySelector('.shortcuts-panel') as HTMLElement;
+    const close = this.overlay.querySelector('.sh-close') as HTMLElement;
+    this.dialogFocus = new DialogFocus(this.overlay, panel, () => this.hide(), close);
   }
 
   hide(): void {
+    this.dialogFocus?.destroy();
+    this.dialogFocus = null;
     this.overlay?.remove();
     this.overlay = null;
   }

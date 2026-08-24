@@ -16,6 +16,8 @@ export class ScoreRenderer {
   private loadQueue: Promise<void> = Promise.resolve();
   private loadGeneration = 0;
   private destroyed = false;
+  private scrollFrame: number | null = null;
+  private renderCount = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -43,6 +45,7 @@ export class ScoreRenderer {
 
     // Clean up previous instance to prevent memory leaks
     this.clearNoteHighlights();
+    this.cancelPendingScroll();
     this.overlay.clear();
     this.wrongNoteOverlay?.remove();
     this.wrongNoteOverlay = null;
@@ -112,6 +115,7 @@ export class ScoreRenderer {
     try {
       osmd.zoom = this._zoom;
       osmd.render();
+      this.renderCount++;
     } catch (error) {
       osmd.clear();
       throw error;
@@ -246,24 +250,34 @@ export class ScoreRenderer {
 
   /** Scroll the container to keep the cursor element visible */
   scrollToCursor(): void {
-    const cursorEl = this.cursor?.cursorElement;
-    if (!cursorEl) return;
+    if (this.scrollFrame !== null || !this.cursor?.cursorElement) return;
+    this.scrollFrame = requestAnimationFrame(() => {
+      this.scrollFrame = null;
+      const cursorEl = this.cursor?.cursorElement;
+      if (!cursorEl || this.destroyed) return;
 
-    const containerRect = this.container.getBoundingClientRect();
-    const cursorRect = cursorEl.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      const cursorRect = cursorEl.getBoundingClientRect();
 
-    // Check if cursor is below the visible area
-    const cursorBottom = cursorRect.bottom - containerRect.top;
-    const visibleHeight = this.container.clientHeight;
+      const cursorBottom = cursorRect.bottom - containerRect.top;
+      const visibleHeight = this.container.clientHeight;
 
-    if (cursorBottom > visibleHeight - 40 || cursorRect.top < containerRect.top + 20) {
-      // Scroll to center the cursor
-      const scrollTarget = this.container.scrollTop + cursorRect.top - containerRect.top - visibleHeight / 3;
-      this.container.scrollTo({
-        top: Math.max(0, scrollTarget),
-        behavior: 'smooth',
-      });
-    }
+      if (cursorBottom > visibleHeight - 40 || cursorRect.top < containerRect.top + 20) {
+        const scrollTarget = this.container.scrollTop
+          + cursorRect.top - containerRect.top - visibleHeight / 3;
+        const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.container.scrollTo({
+          top: Math.max(0, scrollTarget),
+          behavior: reduceMotion ? 'auto' : 'smooth',
+        });
+      }
+    });
+  }
+
+  private cancelPendingScroll(): void {
+    if (this.scrollFrame === null) return;
+    cancelAnimationFrame(this.scrollFrame);
+    this.scrollFrame = null;
   }
 
   /** Reset green played notes back to original colors (for repeat sections) */
@@ -287,6 +301,7 @@ export class ScoreRenderer {
 
   /** Clear all note coloring (restore originals, remove played markers and wrong notes) */
   clearNoteHighlights(): void {
+    this.cancelPendingScroll();
     // Restore current blue highlight
     for (const { el, origFill, origStroke } of this.currentHighlight) {
       if (origFill === null) el.removeAttribute('fill');
@@ -326,18 +341,22 @@ export class ScoreRenderer {
     return this.currentHand;
   }
 
-  setZoom(zoom: number): void {
-    if (!Number.isFinite(zoom)) return;
-    this._zoom = Math.max(0.5, Math.min(3.0, zoom));
+  setZoom(zoom: number): boolean {
+    if (!Number.isFinite(zoom)) return false;
+    const normalizedZoom = Math.max(0.5, Math.min(3, zoom));
+    if (normalizedZoom === this._zoom) return false;
+    this._zoom = normalizedZoom;
     if (this.osmd) {
       // Clear stale SVG references before re-render (osmd.render() recreates all SVG elements)
       this.clearNoteHighlights();
       this.osmd.zoom = this._zoom;
       this.osmd.render();
+      this.renderCount++;
       this.setupCursor();
       this.setupWrongNoteOverlay();
       this.applyHandColoring();
     }
+    return true;
   }
 
   getZoom(): number {
@@ -606,9 +625,28 @@ export class ScoreRenderer {
     return this.overlay;
   }
 
+  getDiagnostics(): {
+    renderCount: number;
+    scorePages: number;
+    overlayGroups: number;
+    overlayRenderCount: number;
+    pendingTimers: number;
+    scrollScheduled: boolean;
+  } {
+    return {
+      renderCount: this.renderCount,
+      scorePages: this.container.querySelectorAll('svg[id^="osmdSvgPage"]').length,
+      overlayGroups: this.container.querySelectorAll('g.score-overlay').length,
+      overlayRenderCount: this.overlay.getUpdateCount(),
+      pendingTimers: this.pendingTimers.size,
+      scrollScheduled: this.scrollFrame !== null,
+    };
+  }
+
   destroy(): void {
     this.destroyed = true;
     this.loadGeneration++;
+    this.cancelPendingScroll();
     for (const id of this.pendingTimers) clearTimeout(id);
     this.pendingTimers.clear();
     this.clearNoteHighlights();

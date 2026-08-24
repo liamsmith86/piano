@@ -11,6 +11,9 @@ export class CountIn {
 
     this.overlay = document.createElement('div');
     this.overlay.className = 'count-in-overlay';
+    this.overlay.setAttribute('role', 'status');
+    this.overlay.setAttribute('aria-live', 'assertive');
+    this.overlay.setAttribute('aria-label', `Count in, beat ${beat} of ${total}`);
     this.overlay.innerHTML = `
       <div class="count-in-beat">${beat}</div>
       <div class="count-in-dots">

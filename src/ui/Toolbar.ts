@@ -8,6 +8,7 @@ export class Toolbar {
   private onPlay: (() => Promise<void>) | null = null;
   private onStop: (() => void) | null = null;
   private onShowSettings: (() => void) | null = null;
+  private zoomTimer: number | null = null;
 
   // Element references
   private playBtn!: HTMLButtonElement;
@@ -35,6 +36,8 @@ export class Toolbar {
   render(): void {
     this.container.innerHTML = '';
     this.container.className = 'toolbar';
+    this.container.setAttribute('role', 'toolbar');
+    this.container.setAttribute('aria-label', 'Piano practice controls');
 
     this.container.innerHTML = `
       <div class="tb-row tb-main">
@@ -54,15 +57,15 @@ export class Toolbar {
 
       <div class="tb-row tb-controls">
         <div class="tb-transport">
-          <button class="tb-btn tb-play-btn" title="Play / Pause" aria-label="Play or pause">
-            <svg class="icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <svg class="icon-pause" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          <button class="tb-btn tb-play-btn" title="Play / Pause" aria-label="Play or pause" disabled>
+            <svg class="icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <svg class="icon-pause" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           </button>
-          <button class="tb-btn tb-stop-btn" title="Stop" aria-label="Stop playback">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          <button class="tb-btn tb-stop-btn" title="Stop" aria-label="Stop playback" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
           </button>
           <button class="tb-btn tb-metronome-btn" title="Metronome" aria-label="Toggle metronome" aria-pressed="false">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M12 2L8 22h8L12 2z"/><line x1="12" y1="8" x2="16" y2="4"/>
             </svg>
           </button>
@@ -86,20 +89,20 @@ export class Toolbar {
             <input type="checkbox" class="tb-loop-toggle" />
             <span>Loop</span>
           </label>
-          <input type="number" class="tb-loop-start" min="1" value="1" title="Start measure" />
+          <input type="number" class="tb-loop-start" min="1" value="1" title="Start measure" aria-label="Loop start measure" />
           <span class="tb-loop-dash">-</span>
-          <input type="number" class="tb-loop-end" min="1" value="4" title="End measure" />
+          <input type="number" class="tb-loop-end" min="1" value="4" title="End measure" aria-label="Loop end measure" />
         </div>
 
         <div class="tb-tempo">
-          <span class="tb-bpm-display" title="Beats per minute"></span>
+          <span class="tb-bpm-display" title="Beats per minute" aria-live="polite"></span>
           <div class="tb-tempo-presets">
             <button class="tb-tempo-preset" data-speed="50">50%</button>
             <button class="tb-tempo-preset" data-speed="75">75%</button>
             <button class="tb-tempo-preset active" data-speed="100">100%</button>
           </div>
           <label>
-            <input type="range" class="tb-tempo-slider" min="25" max="200" value="100" step="5" />
+            <input type="range" class="tb-tempo-slider" min="25" max="200" value="100" step="5" aria-label="Playback speed" aria-valuetext="100 percent" />
           </label>
         </div>
 
@@ -107,19 +110,19 @@ export class Toolbar {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
           </svg>
-          <input type="range" class="tb-volume-slider" min="0" max="100" value="50" step="5" />
+          <input type="range" class="tb-volume-slider" min="0" max="100" value="50" step="5" aria-label="Piano volume" aria-valuetext="50 percent" />
         </div>
 
         <div class="tb-zoom" title="Score zoom">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
           </svg>
-          <input type="range" class="tb-zoom-slider" min="50" max="300" value="${Math.round(this.app.renderer.getZoom() * 100)}" step="10" />
+          <input type="range" class="tb-zoom-slider" min="50" max="300" value="${Math.round(this.app.renderer.getZoom() * 100)}" step="10" aria-label="Score zoom" aria-valuetext="${Math.round(this.app.renderer.getZoom() * 100)} percent" />
           <span class="tb-zoom-label">${Math.round(this.app.renderer.getZoom() * 100)}%</span>
         </div>
 
-        <button class="tb-btn tb-settings-btn" title="Settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="tb-btn tb-settings-btn" title="Settings" aria-label="Open settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
@@ -136,7 +139,7 @@ export class Toolbar {
         <span class="tb-stat tb-progress-text">0 / 0</span>
       </div>
 
-      <div class="tb-progress-bar"><div class="tb-progress-fill"></div></div>
+      <div class="tb-progress-bar" role="progressbar" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="tb-progress-fill"></div></div>
     `;
 
     this.bindElements();
@@ -231,6 +234,7 @@ export class Toolbar {
 
     const updateTempo = (pct: number) => {
       this.tempoSlider.value = String(pct);
+      this.tempoSlider.setAttribute('aria-valuetext', `${pct} percent`);
       this.app.setTempoScale(pct / 100);
       this.updateBpmDisplay(bpmDisplay, pct);
       tempoPresets.forEach(btn => {
@@ -247,6 +251,7 @@ export class Toolbar {
     const volumeSlider = this.container.querySelector('.tb-volume-slider') as HTMLInputElement;
     volumeSlider.addEventListener('input', () => {
       const pct = parseInt(volumeSlider.value);
+      volumeSlider.setAttribute('aria-valuetext', `${pct} percent`);
       // Map 0-100 to -40dB..0dB (logarithmic feel)
       const db = pct === 0 ? -Infinity : (pct / 100) * 40 - 40;
       this.app.audio.setVolume(db);
@@ -255,11 +260,20 @@ export class Toolbar {
     // Zoom slider
     const zoomSlider = this.container.querySelector('.tb-zoom-slider') as HTMLInputElement;
     const zoomLabel = this.container.querySelector('.tb-zoom-label') as HTMLSpanElement;
+    const commitZoom = () => {
+      if (this.zoomTimer !== null) window.clearTimeout(this.zoomTimer);
+      this.zoomTimer = null;
+      const pct = parseInt(zoomSlider.value);
+      this.app.setZoom(pct / 100);
+    };
     zoomSlider.addEventListener('input', () => {
       const pct = parseInt(zoomSlider.value);
       zoomLabel.textContent = `${pct}%`;
-      this.app.setZoom(pct / 100);
+      zoomSlider.setAttribute('aria-valuetext', `${pct} percent`);
+      if (this.zoomTimer !== null) window.clearTimeout(this.zoomTimer);
+      this.zoomTimer = window.setTimeout(commitZoom, 100);
     });
+    zoomSlider.addEventListener('change', commitZoom);
 
     tempoPresets.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -330,7 +344,7 @@ export class Toolbar {
       const song = this.app.getLoadedSong();
       if (song) this.songTitle.textContent = song.title;
       // Reset progress bar
-      this.progressBar.style.width = '0%';
+      this.setProgress(0);
       // Reset tempo to 100%
       this.tempoSlider.value = '100';
       this.app.setTempoScale(1.0);
@@ -404,6 +418,9 @@ export class Toolbar {
     playIcon.style.display = isPlaying ? 'none' : 'block';
     pauseIcon.style.display = isPlaying ? 'block' : 'none';
     this.playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    const hasSong = this.app.getLoadedSong() !== null;
+    this.playBtn.disabled = !hasSong;
+    this.stopBtn.disabled = !hasSong;
   }
 
   private updateModeUI(): void {
@@ -426,7 +443,7 @@ export class Toolbar {
     const mode = this.app.getMode();
     if (mode === 'play') {
       const progress = this.app.playMode.getProgress();
-      this.progressBar.style.width = `${progress * 100}%`;
+      this.setProgress(progress);
     }
   }
 
@@ -443,7 +460,13 @@ export class Toolbar {
     progressText.textContent = `${state.cursorIndex} / ${state.totalNotes}`;
 
     const progress = state.totalNotes > 0 ? state.cursorIndex / state.totalNotes : 0;
-    this.progressBar.style.width = `${progress * 100}%`;
+    this.setProgress(progress);
+  }
+
+  private setProgress(progress: number): void {
+    const percentage = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+    this.progressBar.style.width = `${percentage}%`;
+    this.progressBar.parentElement?.setAttribute('aria-valuenow', String(percentage));
   }
 
   private updateBpmDisplay(el: Element, pct: number): void {

@@ -99,6 +99,7 @@ export class ScoreOverlay {
   private showAccidentals = false;
   private showFingering = false;
   private showChords = false;
+  private updateCount = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -125,6 +126,7 @@ export class ScoreOverlay {
    * This ensures getBBox() coordinates are in the same space as our text elements.
    */
   update(osmd: OpenSheetMusicDisplay, timeline?: NoteEvent[]): void {
+    this.updateCount++;
     this.clear();
 
     if (!this.showNoteNames && !this.showAccidentals && !this.showFingering && !this.showChords) return;
@@ -608,6 +610,10 @@ export class ScoreOverlay {
     // Also remove any stale overlay groups left in the container
     // (can happen when OSMD recreates its SVG on song switch)
     this.container.querySelectorAll('g.score-overlay').forEach(g => g.remove());
+  }
+
+  getUpdateCount(): number {
+    return this.updateCount;
   }
 
   destroy(): void {

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'player-v2';
+const CACHE_NAME = 'player-v3';
 const SAMPLE_CACHE = 'player-samples-v1';
 
 // App shell files to precache (updated on each deploy)
@@ -19,8 +19,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
   );
-  // Activate immediately without waiting for existing tabs to close
-  self.skipWaiting();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

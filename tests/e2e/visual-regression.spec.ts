@@ -207,6 +207,26 @@ test.describe('Visual Regression: Song Library', () => {
   });
 });
 
+test.describe('Visual Regression: Status Feedback', () => {
+  test('score loading feedback is clear and unobtrusive', async ({ page }) => {
+    await page.route('**/songs/MozartPianoSonata.mxl', async route => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+    await page.goto('/');
+    await waitForApp(page);
+
+    await page.evaluate(() => {
+      void window.pianoApp.loadSong('/songs/MozartPianoSonata.mxl');
+    });
+    const task = page.locator('.app-task');
+    await expect(task).toContainText('Opening Mozart - Piano Sonata');
+    await expect(task).toHaveScreenshot('status-score-loading.png', {
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+});
+
 test.describe('Visual Regression: Wrong Note Marker', () => {
   test('wrong note marker appears on staff', async ({ page }) => {
     await page.goto('/');

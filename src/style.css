@@ -44,7 +44,20 @@ html, body {
 
 /* ===== Global Transitions ===== */
 button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
-  transition: all 0.15s ease;
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /* ===== Toolbar ===== */
@@ -719,6 +732,10 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
 
 .vk-key {
   position: relative;
+  margin: 0;
+  appearance: none;
+  color: inherit;
+  font: inherit;
   border-radius: 0 0 4px 4px;
   cursor: pointer;
   transition: background 0.08s;
@@ -769,6 +786,7 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
   border-radius: 0 0 3px 3px;
   z-index: 2;
   pointer-events: auto;
+  border: 0;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4), inset 0 -1px 2px rgba(255,255,255,0.05);
 }
 
@@ -826,6 +844,131 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ===== Background status & messages ===== */
+.app-status-root {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: none;
+}
+
+.app-task-region,
+.app-message-region {
+  position: absolute;
+  left: 50%;
+  width: min(92vw, 460px);
+  transform: translateX(-50%);
+}
+
+.app-task-region {
+  top: max(16px, env(safe-area-inset-top));
+}
+
+.app-message-region {
+  bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+.app-task,
+.app-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+  background: rgba(30, 41, 59, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.app-task {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  padding: 11px 14px;
+}
+
+.app-task-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.app-task-copy strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-task-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.app-task-progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  accent-color: var(--primary);
+}
+
+.app-message {
+  padding: 11px 12px 11px 14px;
+  pointer-events: auto;
+  animation: cardSlideUp 0.2s ease-out;
+}
+
+.app-message-error {
+  border-color: rgba(239, 68, 68, 0.65);
+}
+
+.app-message-success {
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.app-message-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.app-message-action,
+.app-message-dismiss {
+  flex: 0 0 auto;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-message-action {
+  padding: 6px 9px;
+  border-radius: 6px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-message-action:hover {
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.app-message-dismiss {
+  padding: 2px 5px;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
 }
 
 /* ===== Scrollbar ===== */
@@ -1486,5 +1629,14 @@ button, .tb-btn, .sl-card, .pc-btn, .sp-preset-btn, .tb-mode-btn, .tb-hand-btn {
 @supports (padding: env(safe-area-inset-bottom)) {
   #keyboard-container {
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

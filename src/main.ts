@@ -6,6 +6,7 @@ import { CountIn } from './ui/CountIn';
 import { NoteDisplay } from './ui/NoteDisplay';
 import { SettingsPanel } from './ui/Settings';
 import { ShortcutsHelp } from './ui/ShortcutsHelp';
+import { AppStatus } from './ui/AppStatus';
 import type { AppSettings } from './ui/Settings';
 import { addSession } from './progress';
 import './style.css';
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
   const libraryContainer = document.getElementById('library-container')!;
 
   const app = new PianoApp(scoreContainer, keyboardContainer);
-  window.pianoApp = app;
+  const status = new AppStatus(appEl);
 
   const toolbar = new Toolbar(app, toolbarContainer);
   toolbar.render();
@@ -40,11 +41,75 @@ async function main(): Promise<void> {
   const shortcutsHelp = new ShortcutsHelp(appEl);
   let updateNoteDisplay = () => {};
 
+  const retryAudio = async () => {
+    app.audio.unlockAudioFromGesture();
+    try {
+      await app.init();
+    } catch (error) {
+      console.warn('Audio retry failed:', error);
+    }
+  };
+
+  app.on('audioLoadStateChanged', progress => {
+    if (progress.state === 'loading') {
+      status.setTask('audio', {
+        label: 'Preparing piano sound',
+        detail: `${progress.loadedSamples} of ${progress.totalSamples} samples`,
+        progress: progress.totalSamples > 0
+          ? progress.loadedSamples / progress.totalSamples
+          : undefined,
+      });
+    } else {
+      status.finishTask('audio');
+      if (progress.state === 'error') {
+        status.showMessage(
+          'Piano sound could not be loaded. Check your connection and try again.',
+          { kind: 'error', actionLabel: 'Retry', onAction: retryAudio },
+        );
+      }
+    }
+  });
+
+  app.on('songLoadStateChanged', state => {
+    if (state.state === 'loading') {
+      cancelPendingStart();
+      status.setTask('song', {
+        label: `Opening ${state.title}`,
+        detail: 'Laying out the sheet music…',
+      });
+      return;
+    }
+
+    status.finishTask('song');
+    if (state.state === 'error') {
+      status.showMessage(`Could not open “${state.title}”. Please try again.`, { kind: 'error' });
+    }
+  });
+
+  library.setOnError(message => status.showMessage(message, { kind: 'error' }));
+
+  const showOfflineStatus = () => {
+    status.showMessage('You are offline. Cached songs and piano sounds remain available.', {
+      kind: 'info',
+      timeoutMs: 6000,
+    });
+  };
+  window.addEventListener('offline', showOfflineStatus);
+  window.addEventListener('online', () => {
+    status.showMessage('Back online.', { kind: 'success' });
+  });
+  if (!navigator.onLine) showOfflineStatus();
+
+  if ('serviceWorker' in navigator && !import.meta.env.DEV) {
+    setupServiceWorker(status);
+  }
+
   // Keyboard visibility: hidden by default, auto-shows in practice mode
   const updateKeyboardVisibility = () => {
     const settings = settingsPanel.getSettings();
     const inPractice = app.getMode() === 'practice' && app.practiceMode.isActive();
     const visible = settings.showVirtualKeyboard || inPractice;
+    if (visible) app.virtualKeyboard?.ensureRendered();
     keyboardContainer.style.display = visible ? '' : 'none';
   };
 
@@ -116,6 +181,9 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('Playback error:', err);
       countIn.hide();
+      status.showMessage('Playback could not start. Please try again.', {
+        kind: 'error', actionLabel: 'Retry', onAction: playWithCountIn,
+      });
     } finally {
       if (generation === startGeneration) isStarting = false;
     }
@@ -143,6 +211,9 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('Practice start error:', err);
       countIn.hide();
+      status.showMessage('Practice mode could not start. Please try again.', {
+        kind: 'error', actionLabel: 'Retry', onAction: practiceWithCountIn,
+      });
     } finally {
       if (generation === startGeneration) isStarting = false;
     }
@@ -167,6 +238,7 @@ async function main(): Promise<void> {
       return;
     }
     // Otherwise (stopped/paused/practice), stop and jump cursor
+    cancelPendingStart();
     app.stop();
     app.clearLoop();
     app.scoreInteraction.clearSelection();
@@ -176,6 +248,7 @@ async function main(): Promise<void> {
   app.scoreInteraction.setOnSelect((selection) => {
     if (!selection) return;
     // Stop current playback/practice before setting loop
+    cancelPendingStart();
     app.stop();
     app.setLoop(selection.startMeasure, selection.endMeasure);
   });
@@ -187,7 +260,10 @@ async function main(): Promise<void> {
         scoreContainer.style.display = 'block';
       }
     } else {
-      library.show();
+      cancelPendingStart();
+      app.stop();
+      app.stopPractice();
+      void library.show();
       scoreContainer.style.display = 'none';
     }
   });
@@ -242,6 +318,7 @@ async function main(): Promise<void> {
 
   app.on('cursorAdvanced', updateNoteDisplay);
   app.on('modeChanged', ({ mode }) => {
+    cancelPendingStart();
     updateNoteDisplay();
     updateKeyboardVisibility();
     if (mode !== 'practice') {
@@ -311,10 +388,12 @@ async function main(): Promise<void> {
   // Fetch the small scheduling module when the browser is idle. Piano samples
   // remain deferred until the first interaction, and OSMD until a score load.
   const prepareAudio = () => app.audio.prepare().catch(() => {});
+  let idleAudioHandle: number | null = null;
+  let audioPrepareTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(prepareAudio, { timeout: 3000 });
+    idleAudioHandle = window.requestIdleCallback(prepareAudio, { timeout: 3000 });
   } else {
-    globalThis.setTimeout(prepareAudio, 1000);
+    audioPrepareTimer = globalThis.setTimeout(prepareAudio, 1000);
   }
 
   // Override toolbar play button to use count-in
@@ -352,7 +431,10 @@ async function main(): Promise<void> {
 
   // Global keyboard shortcuts
   document.addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"], [role="dialog"]')) {
+      return;
+    }
 
     switch (e.key) {
       case ' ':
@@ -381,6 +463,7 @@ async function main(): Promise<void> {
         shortcutsHelp.hide();
         break;
       case 'm':
+      case 'M':
         app.toggleMetronome();
         break;
       case '?':
@@ -389,20 +472,52 @@ async function main(): Promise<void> {
     }
   });
 
+  // Expose the automation API only after all UI listeners are ready. This also
+  // gives integrations a reliable application-ready signal.
+  window.pianoApp = app;
+
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     cancelPendingStart();
+    if (idleAudioHandle !== null) window.cancelIdleCallback(idleAudioHandle);
+    if (audioPrepareTimer !== null) globalThis.clearTimeout(audioPrepareTimer);
+    status.destroy();
     app.destroy();
   });
 }
 
-main().catch(console.error);
+function setupServiceWorker(status: AppStatus): void {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
 
-// Register service worker for offline support (production only)
-if ('serviceWorker' in navigator && !import.meta.env.DEV) {
+  const offerUpdate = (worker: ServiceWorker) => {
+    status.showMessage('A polished new version is ready.', {
+      kind: 'info',
+      actionLabel: 'Refresh',
+      timeoutMs: 0,
+      onAction: () => worker.postMessage({ type: 'SKIP_WAITING' }),
+    });
+  };
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('SW registration failed:', err);
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      if (registration.waiting) offerUpdate(registration.waiting);
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            offerUpdate(worker);
+          }
+        });
+      });
+    }).catch(error => {
+      console.warn('Service worker registration failed:', error);
     });
   });
 }
+
+main().catch(console.error);

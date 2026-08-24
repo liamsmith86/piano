@@ -23,6 +23,7 @@ export class VirtualKeyboard {
   private activeNotes = new Set<number>();
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private feedbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  private rendered = false;
 
   constructor(
     container: HTMLElement,
@@ -37,6 +38,7 @@ export class VirtualKeyboard {
   }
 
   render(): void {
+    this.rendered = true;
     this.releaseActiveNotes();
     // Cancel any pending markCorrect/markWrong timers from previous render
     for (const id of this.pendingTimers) clearTimeout(id);
@@ -92,9 +94,13 @@ export class VirtualKeyboard {
   }
 
   private createKey(midi: number, isBlack: boolean): HTMLElement {
-    const key = document.createElement('div');
+    const key = document.createElement('button');
+    key.type = 'button';
     key.className = `vk-key ${isBlack ? 'vk-black' : 'vk-white'}`;
     key.dataset.midi = String(midi);
+    key.setAttribute('aria-label', `Piano key ${midiToNoteName(midi)}`);
+    key.setAttribute('aria-pressed', 'false');
+    key.tabIndex = midi === (this.startOctave + 1) * 12 ? 0 : -1;
 
     if (!isBlack) {
       const totalWhiteKeys = this.numOctaves * 7 + 1;
@@ -116,6 +122,7 @@ export class VirtualKeyboard {
       if (!this.activeNotes.has(midi)) {
         this.activeNotes.add(midi);
         key.classList.add('vk-pressed');
+        key.setAttribute('aria-pressed', 'true');
         this.inputManager.emit({
           type: 'noteOn',
           midiNumber: midi,
@@ -131,6 +138,7 @@ export class VirtualKeyboard {
       if (this.activeNotes.has(midi)) {
         this.activeNotes.delete(midi);
         key.classList.remove('vk-pressed');
+        key.setAttribute('aria-pressed', 'false');
         this.inputManager.emit({
           type: 'noteOff',
           midiNumber: midi,
@@ -147,6 +155,34 @@ export class VirtualKeyboard {
     key.addEventListener('mouseleave', noteOff);
     key.addEventListener('touchend', noteOff);
     key.addEventListener('touchcancel', noteOff);
+
+    key.addEventListener('focus', () => {
+      for (const element of this.keyElements.values()) element.tabIndex = -1;
+      key.tabIndex = 0;
+    });
+    key.addEventListener('keydown', event => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.stopPropagation();
+        if (!event.repeat) noteOn(event);
+        return;
+      }
+
+      let targetMidi: number | null = null;
+      if (event.key === 'ArrowLeft') targetMidi = midi - 1;
+      else if (event.key === 'ArrowRight') targetMidi = midi + 1;
+      else if (event.key === 'Home') targetMidi = Math.min(...this.keyElements.keys());
+      else if (event.key === 'End') targetMidi = Math.max(...this.keyElements.keys());
+      if (targetMidi === null) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.keyElements.get(targetMidi)?.focus();
+    });
+    key.addEventListener('keyup', event => {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      event.stopPropagation();
+      noteOff(event);
+    });
 
     return key;
   }
@@ -205,7 +241,7 @@ export class VirtualKeyboard {
   setShowNoteNames(show: boolean): void {
     if (show === this.showNoteNames) return;
     this.showNoteNames = show;
-    this.render(); // re-render
+    if (this.rendered) this.render();
   }
 
   setAutoScroll(enabled: boolean): void {
@@ -215,7 +251,12 @@ export class VirtualKeyboard {
   scrollToNote(midi: number): void {
     const el = this.keyElements.get(midi);
     if (el?.scrollIntoView) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
     }
   }
 
@@ -233,8 +274,16 @@ export class VirtualKeyboard {
     if (minOctave !== this.startOctave || newNumOctaves !== this.numOctaves) {
       this.startOctave = minOctave;
       this.numOctaves = newNumOctaves;
-      this.render();
+      if (this.rendered) this.render();
     }
+  }
+
+  ensureRendered(): void {
+    if (!this.rendered) this.render();
+  }
+
+  isRendered(): boolean {
+    return this.rendered;
   }
 
   getRange(): { startOctave: number; numOctaves: number } {
@@ -247,6 +296,7 @@ export class VirtualKeyboard {
     this.pendingTimers.clear();
     this.feedbackTimers.clear();
     this.container.innerHTML = '';
+    this.rendered = false;
     this.keyElements.clear();
     this.highlightedNotes.clear();
   }

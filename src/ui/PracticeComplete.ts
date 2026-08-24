@@ -1,8 +1,10 @@
 import type { PracticeState } from '../types';
+import { DialogFocus } from './DialogFocus';
 
 export class PracticeComplete {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
+  private dialogFocus: DialogFocus | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -51,8 +53,8 @@ export class PracticeComplete {
     this.overlay = document.createElement('div');
     this.overlay.className = 'practice-complete-overlay';
     this.overlay.innerHTML = `
-      <div class="pc-card">
-        <h2>Practice Complete!</h2>
+      <div class="pc-card" role="dialog" aria-modal="true" aria-labelledby="practice-complete-title" tabindex="-1">
+        <h2 id="practice-complete-title">Practice Complete!</h2>
         <div class="pc-grade" style="color: ${gradeColor}">${grade}</div>
         <div class="pc-stats">
           <div class="pc-stat">
@@ -108,9 +110,14 @@ export class PracticeComplete {
     });
 
     this.container.appendChild(this.overlay);
+    const card = this.overlay.querySelector('.pc-card') as HTMLElement;
+    const retry = this.overlay.querySelector('.pc-retry') as HTMLElement;
+    this.dialogFocus = new DialogFocus(this.overlay, card, () => this.hide(), retry);
   }
 
   hide(): void {
+    this.dialogFocus?.destroy();
+    this.dialogFocus = null;
     this.overlay?.remove();
     this.overlay = null;
   }

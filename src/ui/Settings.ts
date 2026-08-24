@@ -1,3 +1,5 @@
+import { DialogFocus } from './DialogFocus';
+
 export interface AppSettings {
   showNoteNames: boolean;
   showNextNote: boolean;
@@ -103,6 +105,7 @@ export class SettingsPanel {
   private overlay: HTMLElement | null = null;
   private settings: AppSettings;
   private onChange: ((settings: AppSettings) => void) | null = null;
+  private dialogFocus: DialogFocus | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -119,9 +122,9 @@ export class SettingsPanel {
     this.overlay = document.createElement('div');
     this.overlay.className = 'settings-overlay';
     this.overlay.innerHTML = `
-      <div class="settings-panel">
+      <div class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
         <div class="sp-header">
-          <h2>Settings</h2>
+          <h2 id="settings-title">Settings</h2>
           <button type="button" class="sp-close" aria-label="Close settings">&times;</button>
         </div>
 
@@ -264,6 +267,9 @@ export class SettingsPanel {
     });
 
     this.container.appendChild(this.overlay);
+    const panel = this.overlay.querySelector('.settings-panel') as HTMLElement;
+    const close = this.overlay.querySelector('.sp-close') as HTMLElement;
+    this.dialogFocus = new DialogFocus(this.overlay, panel, () => this.hide(), close);
   }
 
   private applyPreset(preset: string): void {
@@ -322,6 +328,8 @@ export class SettingsPanel {
   }
 
   hide(): void {
+    this.dialogFocus?.destroy();
+    this.dialogFocus = null;
     this.overlay?.remove();
     this.overlay = null;
   }

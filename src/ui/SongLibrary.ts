@@ -12,6 +12,7 @@ export class SongLibrary {
   private app: PianoApp;
   private container: HTMLElement;
   private onSongLoad: ((song: SongInfo) => void) | null = null;
+  private onError: ((message: string) => void) | null = null;
   private grid: HTMLElement | null = null;
   private renderGeneration = 0;
   private loadGeneration = 0;
@@ -37,7 +38,7 @@ export class SongLibrary {
       <div class="sl-actions">
         <label class="sl-upload-btn" title="Upload MXL/MusicXML file">
           <input type="file" accept=".mxl,.musicxml,.xml" class="sl-file-input" />
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           Upload
         </label>
       </div>
@@ -51,8 +52,8 @@ export class SongLibrary {
     const searchBar = document.createElement('div');
     searchBar.className = 'sl-search';
     searchBar.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="sl-search-input" placeholder="Search songs..." />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" class="sl-search-input" placeholder="Search songs..." aria-label="Search songs" />
     `;
     wrapper.appendChild(searchBar);
 
@@ -194,7 +195,7 @@ export class SongLibrary {
     } catch (err) {
       if (generation !== this.loadGeneration) return;
       console.error('Failed to load song:', err);
-      alert(`Failed to load "${song.title}". Please try another song.`);
+      this.onError?.(`Failed to load “${song.title}”. Please try again.`);
     } finally {
       if (generation === this.loadGeneration) this.setLoading(false);
     }
@@ -211,7 +212,7 @@ export class SongLibrary {
     } catch (err) {
       if (generation !== this.loadGeneration) return;
       console.error('Failed to load uploaded song:', err);
-      alert(`Failed to load "${song.title}".`);
+      this.onError?.(`Failed to load “${song.title}”. Please try again.`);
     } finally {
       if (generation === this.loadGeneration) this.setLoading(false);
     }
@@ -225,7 +226,7 @@ export class SongLibrary {
 
   private async loadFile(file: File): Promise<void> {
     if (!file.name.match(/\.(mxl|musicxml|xml)$/i)) {
-      alert('Please upload a .mxl, .musicxml, or .xml file');
+      this.onError?.('Please choose an MXL, MusicXML, or XML score file.');
       return;
     }
 
@@ -246,7 +247,7 @@ export class SongLibrary {
     } catch (err) {
       if (generation !== this.loadGeneration) return;
       console.error('Failed to load uploaded file:', err);
-      alert('Failed to load file. Ensure it is a valid MusicXML or MXL file.');
+      this.onError?.('That score could not be opened. Check that it is a valid MXL or MusicXML file.');
     } finally {
       if (generation === this.loadGeneration) this.setLoading(false);
     }
@@ -254,6 +255,10 @@ export class SongLibrary {
 
   setOnSongLoad(cb: (song: SongInfo) => void): void {
     this.onSongLoad = cb;
+  }
+
+  setOnError(cb: (message: string) => void): void {
+    this.onError = cb;
   }
 
   async show(): Promise<void> {
