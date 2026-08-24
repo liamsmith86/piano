@@ -488,8 +488,11 @@ async function main(): Promise<void> {
 
 function setupServiceWorker(status: AppStatus): void {
   let refreshing = false;
+  let refreshRequested = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
+    // clients.claim() also fires on the very first installation. Reload only
+    // after the user explicitly accepts an available update.
+    if (!refreshRequested || refreshing) return;
     refreshing = true;
     location.reload();
   });
@@ -499,11 +502,14 @@ function setupServiceWorker(status: AppStatus): void {
       kind: 'info',
       actionLabel: 'Refresh',
       timeoutMs: 0,
-      onAction: () => worker.postMessage({ type: 'SKIP_WAITING' }),
+      onAction: () => {
+        refreshRequested = true;
+        worker.postMessage({ type: 'SKIP_WAITING' });
+      },
     });
   };
 
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('/sw.js').then(registration => {
       if (registration.waiting) offerUpdate(registration.waiting);
       registration.addEventListener('updatefound', () => {
@@ -517,7 +523,12 @@ function setupServiceWorker(status: AppStatus): void {
     }).catch(error => {
       console.warn('Service worker registration failed:', error);
     });
-  });
+  };
+
+  // main() performs async library discovery, so the load event can finish
+  // before this setup runs on a fast connection.
+  if (document.readyState === 'complete') register();
+  else window.addEventListener('load', register, { once: true });
 }
 
 main().catch(console.error);

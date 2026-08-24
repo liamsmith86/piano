@@ -1,7 +1,10 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'player-v3';
+const CACHE_NAME = 'player-v5';
 const SAMPLE_CACHE = 'player-samples-v1';
+
+// Replaced with the hashed entry JS/CSS by the production build plugin.
+const BUILD_ASSETS = [];
 
 // App shell files to precache (updated on each deploy)
 const APP_SHELL = [
@@ -17,7 +20,7 @@ const SAMPLE_HOST = 'tonejs.github.io';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll([...APP_SHELL, ...BUILD_ASSETS]))
   );
 });
 
@@ -57,6 +60,21 @@ self.addEventListener('fetch', (event) => {
           });
         })
       )
+    );
+    return;
+  }
+
+  // Build assets are content-hashed and immutable. Cache-first avoids a
+  // network round trip on every launch and is reliable in offline mode.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        if (response.ok) cache.put(event.request, response.clone()).catch(() => {});
+        return response;
+      })
     );
     return;
   }

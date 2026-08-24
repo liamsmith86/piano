@@ -3,10 +3,8 @@ import tailwindcss from '@tailwindcss/vite';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const isProd = process.env.NODE_ENV === 'production';
-
 /** Vite plugin that generates a song manifest from public/songs/ at dev/build time */
-function songManifestPlugin(): Plugin {
+function songManifestPlugin(includePersonalSongs: boolean): Plugin {
   const generateManifest = () => {
     const songsDir = path.resolve(__dirname, 'public/songs');
     const songs: { file: string; folder: string }[] = [];
@@ -19,7 +17,7 @@ function songManifestPlugin(): Plugin {
     }
 
     // Scan personal/ — dev only (copyrighted, not in git or prod builds)
-    if (!isProd) {
+    if (includePersonalSongs) {
       const personalDir = path.join(songsDir, 'personal');
       for (const file of safeReaddir(personalDir)) {
         if (/\.(mxl|musicxml|xml)$/i.test(file)) {
@@ -66,6 +64,32 @@ function excludePersonalSongsPlugin(): Plugin {
   };
 }
 
+/** Inject hashed entry assets into the service worker's offline app shell. */
+function serviceWorkerAssetsPlugin(): Plugin {
+  return {
+    name: 'service-worker-assets',
+    closeBundle() {
+      const distDir = path.resolve(__dirname, 'dist');
+      const indexPath = path.join(distDir, 'index.html');
+      const workerPath = path.join(distDir, 'sw.js');
+      if (!fs.existsSync(indexPath) || !fs.existsSync(workerPath)) return;
+
+      const html = fs.readFileSync(indexPath, 'utf8');
+      const assets = [...html.matchAll(/\b(?:src|href)="(\/assets\/[^"?]+)"/g)]
+        .map(match => match[1]);
+      const marker = 'const BUILD_ASSETS = [];';
+      const worker = fs.readFileSync(workerPath, 'utf8');
+      if (!worker.includes(marker)) {
+        throw new Error('Service worker build asset marker is missing');
+      }
+      fs.writeFileSync(
+        workerPath,
+        worker.replace(marker, `const BUILD_ASSETS = ${JSON.stringify([...new Set(assets)])};`),
+      );
+    },
+  };
+}
+
 function safeReaddir(dir: string): string[] {
   try {
     return fs.readdirSync(dir);
@@ -74,17 +98,21 @@ function safeReaddir(dir: string): string[] {
   }
 }
 
-export default defineConfig(async () => {
-  // Only load self-signed SSL plugin in dev (not needed in prod)
-  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin()];
+export default defineConfig(async ({ command, mode }) => {
+  const isProductionBuild = command === 'build';
+  const isDevelopmentServer = command === 'serve' && mode !== 'production';
 
-  if (!isProd) {
+  // Only load self-signed SSL plugin in dev (not needed in prod)
+  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin(!isProductionBuild)];
+
+  if (isDevelopmentServer) {
     const { default: basicSsl } = await import('@vitejs/plugin-basic-ssl');
     plugins.push(basicSsl());
   }
 
-  if (isProd) {
+  if (isProductionBuild) {
     plugins.push(excludePersonalSongsPlugin());
+    plugins.push(serviceWorkerAssetsPlugin());
   }
 
   return {
@@ -92,7 +120,11 @@ export default defineConfig(async () => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      https: true,
+      ...(isDevelopmentServer ? { https: true } : {}),
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 4173,
     },
     build: {
       rollupOptions: {
