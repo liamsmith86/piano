@@ -6,6 +6,7 @@ export class Toolbar {
   private container: HTMLElement;
   private onShowLibrary: (() => void) | null = null;
   private onPlay: (() => Promise<void>) | null = null;
+  private onStop: (() => void) | null = null;
   private onShowSettings: (() => void) | null = null;
 
   // Element references
@@ -193,7 +194,8 @@ export class Toolbar {
 
     // Stop
     this.stopBtn.addEventListener('click', () => {
-      this.app.stop();
+      if (this.onStop) this.onStop();
+      else this.app.stop();
       this.updatePlayButton();
     });
 
@@ -458,6 +460,10 @@ export class Toolbar {
 
   setOnPlay(cb: () => Promise<void>): void {
     this.onPlay = cb;
+  }
+
+  setOnStop(cb: () => void): void {
+    this.onStop = cb;
   }
 
   setOnShowSettings(cb: () => void): void {

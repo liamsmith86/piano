@@ -25,6 +25,19 @@ export interface TempoChange {
   bpm: number;
 }
 
+export interface AudioLoadProgress {
+  state: 'idle' | 'loading' | 'ready' | 'error';
+  loadedSamples: number;
+  totalSamples: number;
+  error?: string;
+}
+
+export interface PlaybackStartOptions {
+  countInBeats?: number;
+  onCountInBeat?: (beat: number, total: number) => void;
+  onCountInComplete?: () => void;
+}
+
 export type HandSelection = 'both' | 'left' | 'right';
 export type AppMode = 'play' | 'practice';
 export type PlaybackState = 'playing' | 'paused' | 'stopped';
@@ -78,6 +91,12 @@ export interface AppEventMap {
   practiceStateChanged: { active: boolean };
   loopChanged: { range: { start: number; end: number } | null };
   metronomeChanged: { enabled: boolean };
+  audioLoadStateChanged: AudioLoadProgress;
+  songLoadStateChanged: {
+    state: 'loading' | 'ready' | 'error';
+    title: string;
+    error?: string;
+  };
   inputNote: InputEvent;
 }
 

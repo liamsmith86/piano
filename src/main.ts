@@ -8,7 +8,6 @@ import { SettingsPanel } from './ui/Settings';
 import { ShortcutsHelp } from './ui/ShortcutsHelp';
 import type { AppSettings } from './ui/Settings';
 import { addSession } from './progress';
-import * as Tone from 'tone';
 import './style.css';
 
 declare global {
@@ -83,42 +82,52 @@ async function main(): Promise<void> {
   // Wrap play/practice start with count-in
   const ensureAudio = async () => {
     // Always unlock AudioContext first (iOS Safari needs this on each user gesture path)
+    app.audio.unlockAudioFromGesture();
     await app.audio.unlockAudio();
     if (!app.audio.ready) {
       await app.init();
     }
   };
 
-  let isStarting = false; // guard against concurrent start attempts
+  let isStarting = false;
+  let startGeneration = 0;
+
+  const cancelPendingStart = () => {
+    startGeneration++;
+    isStarting = false;
+    app.audio.cancelCountIn();
+    countIn.hide();
+  };
 
   const playWithCountIn = async () => {
     if (!app.getLoadedSong() || isStarting) return;
+    const generation = ++startGeneration;
     isStarting = true;
     try {
       await ensureAudio();
+      if (generation !== startGeneration) return;
       const settings = settingsPanel.getSettings();
-      if (app.audio.ready && settings.countIn) {
-        const completed = await app.audio.countIn(
-          settings.countInBeats,
-          beat => countIn.show(beat, settings.countInBeats),
-        );
-        countIn.hide();
-        if (!completed) return;
-      }
-      await app.play();
+      const countInBeats = settings.countIn ? settings.countInBeats : 0;
+      await app.play({
+        countInBeats,
+        onCountInBeat: beat => countIn.show(beat, countInBeats),
+        onCountInComplete: () => countIn.hide(),
+      });
     } catch (err) {
       console.error('Playback error:', err);
       countIn.hide();
     } finally {
-      isStarting = false;
+      if (generation === startGeneration) isStarting = false;
     }
   };
 
   const practiceWithCountIn = async () => {
     if (!app.getLoadedSong() || isStarting) return;
+    const generation = ++startGeneration;
     isStarting = true;
     try {
       await ensureAudio();
+      if (generation !== startGeneration) return;
       const settings = settingsPanel.getSettings();
       if (app.audio.ready && settings.countIn) {
         const completed = await app.audio.countIn(
@@ -126,7 +135,7 @@ async function main(): Promise<void> {
           beat => countIn.show(beat, settings.countInBeats),
         );
         countIn.hide();
-        if (!completed) return;
+        if (!completed || generation !== startGeneration) return;
       }
       await app.startPractice();
       updateNoteDisplay();
@@ -135,7 +144,7 @@ async function main(): Promise<void> {
       console.error('Practice start error:', err);
       countIn.hide();
     } finally {
-      isStarting = false;
+      if (generation === startGeneration) isStarting = false;
     }
   };
 
@@ -288,8 +297,8 @@ async function main(): Promise<void> {
     document.removeEventListener('click', initAudio);
     document.removeEventListener('keydown', initAudio);
     document.removeEventListener('touchstart', initAudio);
-    // Synchronously start AudioContext in gesture handler (critical for iOS Safari)
-    Tone.start().catch(() => {});
+    // Synchronously unlock a native AudioContext in the gesture handler.
+    app.audio.unlockAudioFromGesture();
     // Then do the full async init
     app.init().catch((err) => {
       audioInitStarted = false; // allow retry on failure
@@ -299,11 +308,20 @@ async function main(): Promise<void> {
   };
   addAudioInitListeners();
 
+  // Fetch the small scheduling module when the browser is idle. Piano samples
+  // remain deferred until the first interaction, and OSMD until a score load.
+  const prepareAudio = () => app.audio.prepare().catch(() => {});
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(prepareAudio, { timeout: 3000 });
+  } else {
+    globalThis.setTimeout(prepareAudio, 1000);
+  }
+
   // Override toolbar play button to use count-in
   toolbar.setOnPlay(async () => {
     if (isStarting) {
+      cancelPendingStart();
       app.stop();
-      countIn.hide();
       return;
     }
 
@@ -327,6 +345,11 @@ async function main(): Promise<void> {
     }
   });
 
+  toolbar.setOnStop(() => {
+    cancelPendingStart();
+    app.stop();
+  });
+
   // Global keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -335,8 +358,8 @@ async function main(): Promise<void> {
       case ' ':
         e.preventDefault();
         if (isStarting) {
+          cancelPendingStart();
           app.stop();
-          countIn.hide();
           break;
         }
         if (app.getMode() === 'play') {
@@ -350,6 +373,7 @@ async function main(): Promise<void> {
         }
         break;
       case 'Escape':
+        cancelPendingStart();
         app.stop();
         practiceComplete.hide();
         countIn.hide();
@@ -367,6 +391,7 @@ async function main(): Promise<void> {
 
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
+    cancelPendingStart();
     app.destroy();
   });
 }

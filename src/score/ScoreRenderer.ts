@@ -1,5 +1,4 @@
-import { OpenSheetMusicDisplay, Cursor } from 'opensheetmusicdisplay';
-import type { IOSMDOptions } from 'opensheetmusicdisplay';
+import type { Cursor, IOSMDOptions, OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { HandSelection } from '../types';
 import { ScoreOverlay } from './ScoreOverlay';
 import { buildPracticeStaffMap, getPracticeHand, type PracticeStaffMap } from './PracticePart';
@@ -35,6 +34,11 @@ export class ScoreRenderer {
   }
 
   private async performLoad(source: string | ArrayBuffer, generation: number): Promise<boolean> {
+    if (this.destroyed || generation !== this.loadGeneration) return false;
+
+    // OSMD is by far the largest dependency. Keep the library view fast by
+    // fetching it only after the user actually selects a score.
+    const { OpenSheetMusicDisplay } = await import('opensheetmusicdisplay');
     if (this.destroyed || generation !== this.loadGeneration) return false;
 
     // Clean up previous instance to prevent memory leaks

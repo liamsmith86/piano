@@ -215,7 +215,7 @@ describe('PlayMode', () => {
 
     // Extract the callback that was passed to schedulePlayback
     const schedulCall = audio.schedulePlayback.mock.calls[0];
-    const onCursorAdvance = schedulCall[2];
+    const onCursorAdvance = schedulCall[2].onCursorAdvance;
 
     // Simulate cursor advancing to index 3
     onCursorAdvance(3);
@@ -224,8 +224,7 @@ describe('PlayMode', () => {
     expect(renderer.cursorNext).toHaveBeenCalledTimes(3);
     expect(renderer.highlightCurrentNotes).toHaveBeenCalledWith('#3b82f6');
     expect(renderer.scrollToCursor).toHaveBeenCalled();
-    // getCurrentIndex returns timeline position (1 after first advance)
-    expect(pm.getCurrentIndex()).toBe(1);
+    expect(pm.getCurrentIndex()).toBe(4);
   });
 
   it('completion callback emits songEnd and resets state', async () => {
@@ -235,7 +234,7 @@ describe('PlayMode', () => {
     await pm.start();
 
     const schedulCall = audio.schedulePlayback.mock.calls[0];
-    const onComplete = schedulCall[3];
+    const onComplete = schedulCall[2].onComplete;
 
     onComplete();
 
@@ -246,7 +245,7 @@ describe('PlayMode', () => {
 
   it('ignores queued cursor callbacks after playback has stopped', async () => {
     await pm.start();
-    const onCursorAdvance = audio.schedulePlayback.mock.calls[0][2];
+    const onCursorAdvance = audio.schedulePlayback.mock.calls[0][2].onCursorAdvance;
 
     pm.stop();
     renderer.cursorNext.mockClear();
@@ -268,7 +267,7 @@ describe('PlayMode', () => {
 
     const latestCall = audio.schedulePlayback.mock.calls.at(-1);
     expect(latestCall?.[0][0].timestampBeats).toBe(0);
-    expect(latestCall?.[4]).toEqual([{ timestampBeats: 0, bpm: 90 }]);
+    expect(latestCall?.[3].tempoMap).toEqual([{ timestampBeats: 0, bpm: 90 }]);
   });
 
   it('does not start if already playing', async () => {
@@ -284,9 +283,18 @@ describe('PlayMode', () => {
     await pm.start();
 
     const schedulCall = audio.schedulePlayback.mock.calls[0];
-    const onCursorAdvance = schedulCall[2];
+    const onCursorAdvance = schedulCall[2].onCursorAdvance;
 
     onCursorAdvance(10);
-    expect(pm.getProgress()).toBe(1 / 20); // first advance = position 1 out of 20
+    expect(pm.getProgress()).toBe(11 / 20);
+  });
+
+  it('schedules selected measure ranges as transport loops', async () => {
+    pm.setLoop(2, 3);
+    await pm.start({ countInBeats: 4 });
+
+    const call = audio.schedulePlayback.mock.calls[0];
+    expect(call[3]).toMatchObject({ loop: true, leadInBeats: 4 });
+    expect(call[0][0].timestampBeats).toBe(0);
   });
 });

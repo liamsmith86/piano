@@ -1,7 +1,13 @@
 import type { AudioEngine } from '../audio/AudioEngine';
 import type { ScoreRenderer } from '../score/ScoreRenderer';
 import type { ScoreAnalyzer } from '../score/ScoreAnalyzer';
-import type { NoteEvent, HandSelection, PlaybackState, TempoChange } from '../types';
+import type {
+  NoteEvent,
+  HandSelection,
+  PlaybackStartOptions,
+  PlaybackState,
+  TempoChange,
+} from '../types';
 import type { EventEmitter } from '../events';
 
 export class PlayMode {
@@ -18,8 +24,12 @@ export class PlayMode {
   private loopEnd: number | null = null;
   private lastMeasure = 0;        // for detecting repeats
   private eventByIndex = new Map<number, NoteEvent>(); // O(1) lookup by cursor step
+  private positionByIndex = new Map<number, number>();
   private playbackGeneration = 0;
   private pendingStartMeasure: number | null = null;
+  private playbackStartMeasure = 1;
+  private playbackStartIndex = 0;
+  private hasAdvanced = false;
 
   constructor(
     audio: AudioEngine,
@@ -33,7 +43,7 @@ export class PlayMode {
     this.events = events;
   }
 
-  async start(): Promise<void> {
+  async start(options: PlaybackStartOptions = {}): Promise<void> {
     if (this.state === 'playing') return;
 
     if (this.state === 'paused') {
@@ -81,8 +91,11 @@ export class PlayMode {
     this.currentIndex = playbackTimeline[0].index;
     this.timelinePosition = startPosition;
     this.lastMeasure = 0;
+    this.playbackStartMeasure = playbackTimeline[0].measureNumber;
+    this.playbackStartIndex = playbackTimeline[0].index;
+    this.hasAdvanced = false;
 
-    this.scheduleSegment(playbackTimeline, generation);
+    this.scheduleSegment(playbackTimeline, generation, options);
 
     this.audio.play();
     this.state = 'playing';
@@ -103,6 +116,7 @@ export class PlayMode {
     this.renderer.cursorReset();
     this.currentIndex = 0;
     this.timelinePosition = 0;
+    this.hasAdvanced = false;
     this.pendingStartMeasure = null;
     const stateChanged = this.state !== 'stopped';
     this.state = 'stopped';
@@ -118,6 +132,13 @@ export class PlayMode {
     // Detect repeat: if current event's measure is before the last played measure,
     // reset green notes so repeat section gets fresh visual feedback
     const event = this.eventByIndex.get(eventIndex);
+    const transportWrapped = this.hasAdvanced && eventIndex <= this.currentIndex;
+    if (transportWrapped) {
+      this.renderer.resetPlayedNotes();
+      this.renderer.setCursorToMeasure(this.playbackStartMeasure);
+      this.currentIndex = this.playbackStartIndex;
+      this.lastMeasure = 0;
+    }
     if (event && event.measureNumber < this.lastMeasure) {
       this.renderer.resetPlayedNotes();
     }
@@ -133,7 +154,9 @@ export class PlayMode {
       this.currentIndex++;
     }
     // Track timeline array position for progress calculation
-    this.timelinePosition++;
+    const eventPosition = this.positionByIndex.get(eventIndex);
+    if (eventPosition !== undefined) this.timelinePosition = eventPosition + 1;
+    this.hasAdvanced = true;
     // Highlight current notes (blue) and scroll to keep visible
     this.renderer.highlightCurrentNotes('#3b82f6');
     this.renderer.scrollToCursor();
@@ -234,6 +257,9 @@ export class PlayMode {
     this.renderer.cursorShow();
     this.timelinePosition = startFrom;
     this.lastMeasure = 0;
+    this.playbackStartMeasure = this.timeline[startFrom]?.measureNumber ?? normalizedMeasure;
+    this.playbackStartIndex = this.timeline[startFrom]?.index ?? 0;
+    this.hasAdvanced = false;
 
     if (wasPlaying && this.timeline.length > 0 && startFrom < this.timeline.length) {
       const seekTimeline = this.timeline.slice(startFrom);
@@ -253,12 +279,18 @@ export class PlayMode {
 
   private buildEventIndex(): void {
     this.eventByIndex.clear();
-    for (const event of this.timeline) {
+    this.positionByIndex.clear();
+    for (const [position, event] of this.timeline.entries()) {
       this.eventByIndex.set(event.index, event);
+      this.positionByIndex.set(event.index, position);
     }
   }
 
-  private scheduleSegment(events: NoteEvent[], generation: number): void {
+  private scheduleSegment(
+    events: NoteEvent[],
+    generation: number,
+    startOptions: PlaybackStartOptions = {},
+  ): void {
     const startSeconds = events[0].timestamp;
     const startBeats = events[0].timestampBeats;
     const endBeats = events[events.length - 1].timestampBeats;
@@ -271,9 +303,17 @@ export class PlayMode {
     this.audio.schedulePlayback(
       offsetTimeline,
       this.hand,
-      index => this.onCursorAdvance(index, generation),
-      () => this.onComplete(generation),
-      this.getTempoMapForSegment(startBeats, endBeats),
+      {
+        onCursorAdvance: index => this.onCursorAdvance(index, generation),
+        onComplete: () => this.onComplete(generation),
+        onCountInBeat: startOptions.onCountInBeat,
+        onCountInComplete: startOptions.onCountInComplete,
+      },
+      {
+        tempoMap: this.getTempoMapForSegment(startBeats, endBeats),
+        leadInBeats: startOptions.countInBeats ?? 0,
+        loop: this.loopStart !== null && this.loopEnd !== null,
+      },
     );
   }
 

@@ -1,97 +1,250 @@
-import * as Tone from 'tone';
-import type { NoteEvent, HandSelection, TempoChange } from '../types';
+import type * as ToneModule from 'tone';
+import type {
+  AudioLoadProgress,
+  HandSelection,
+  NoteEvent,
+  TempoChange,
+} from '../types';
 import { midiToNoteName } from '../types';
 
+type Tone = typeof import('./toneRuntime');
+type AudioStateListener = (progress: AudioLoadProgress) => void;
+
+interface PlaybackCallbacks {
+  onCursorAdvance: (index: number) => void;
+  onComplete: () => void;
+  onCountInBeat?: (beat: number, total: number) => void;
+  onCountInComplete?: () => void;
+}
+
+interface PlaybackScheduleOptions {
+  tempoMap?: TempoChange[];
+  leadInBeats?: number;
+  loop?: boolean;
+}
+
+interface CountInTask {
+  timerIds: number[];
+  resolve: (completed: boolean) => void;
+}
+
+const SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
+const SAMPLE_URLS: Readonly<Record<string, string>> = {
+  A0: 'A0.mp3', C1: 'C1.mp3', 'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
+  A1: 'A1.mp3', C2: 'C2.mp3', 'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
+  A2: 'A2.mp3', C3: 'C3.mp3', 'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3',
+  A3: 'A3.mp3', C4: 'C4.mp3', 'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3',
+  A4: 'A4.mp3', C5: 'C5.mp3', 'D#5': 'Ds5.mp3', 'F#5': 'Fs5.mp3',
+  A5: 'A5.mp3', C6: 'C6.mp3', 'D#6': 'Ds6.mp3', 'F#6': 'Fs6.mp3',
+  A6: 'A6.mp3', C7: 'C7.mp3', 'D#7': 'Ds7.mp3', 'F#7': 'Fs7.mp3',
+  A7: 'A7.mp3', C8: 'C8.mp3',
+};
+const SAMPLE_CONCURRENCY = 6;
+
+/**
+ * Owns the shared Web Audio clock used by playback, count-in, and metronome.
+ * Tone is loaded lazily, while a native AudioContext can still be unlocked in
+ * the synchronous portion of an iOS user gesture.
+ */
 export class AudioEngine {
-  private sampler: Tone.Sampler | null = null;
-  private metronomeSynth: Tone.Synth | null = null;
+  private tone: Tone | null = null;
+  private tonePromise: Promise<Tone> | null = null;
+  private gestureContext: AudioContext | null = null;
+  private sampler: ToneModule.Sampler | null = null;
+  private metronomeSynth: ToneModule.Synth | null = null;
   private isReady = false;
-  private scheduledEvents: number[] = [];
-  private cursorCallback: ((index: number) => void) | null = null;
-  private completionCallback: (() => void) | null = null;
-  private _tempo: number = 120;
-  private _tempoScale: number = 1.0;
-  private volumeDb = -20;
-  private activePlaybackTempo = 120;
-  private metronomeEnabled = false;
-  private metronomeInterval: number | null = null;
   private initPromise: Promise<void> | null = null;
+  private readonly stateListener: AudioStateListener | null;
+
+  private scheduledEvents: number[] = [];
+  private metronomeEventId: number | null = null;
+  private playbackActive = false;
+  private transportStartedForMetronome = false;
+  private scheduleGeneration = 0;
   private lifecycleGeneration = 0;
+  private destroyed = false;
+
+  private _tempo = 120;
+  private _tempoScale = 1;
+  private activePlaybackTempo = 120;
+  private volumeDb = -20;
+  private metronomeEnabled = false;
+
   private countInGeneration = 0;
-  private countInDelay: {
-    timerId: ReturnType<typeof setTimeout>;
-    resolve: (completed: boolean) => void;
-  } | null = null;
+  private countInTask: CountInTask | null = null;
+
+  constructor(stateListener?: AudioStateListener) {
+    this.stateListener = stateListener ?? null;
+    this.emitLoadState('idle', 0);
+  }
+
+  /** Download the Tone module without creating instruments or fetching samples. */
+  async prepare(): Promise<void> {
+    await this.loadTone();
+  }
 
   async init(): Promise<void> {
     if (this.isReady) return;
+    if (this.destroyed) throw new Error('Audio engine has been destroyed');
     if (this.initPromise) return this.initPromise;
-    this.initPromise = this.doInit().catch((err) => {
-      // Reset so next call can retry
+
+    this.initPromise = this.doInit().catch((error: unknown) => {
       this.initPromise = null;
-      throw err;
+      const message = error instanceof Error ? error.message : 'Unable to load piano samples';
+      this.emitLoadState('error', 0, message);
+      throw error;
     });
     return this.initPromise;
   }
 
   /**
-   * Resume the AudioContext — must be called from a user gesture handler on iOS Safari.
-   * Safe to call multiple times; returns immediately if already running.
+   * Must be invoked synchronously from a click/key/touch handler. Creating and
+   * resuming the native context here preserves iOS user activation even when
+   * the lazily imported Tone module has not arrived yet.
    */
+  unlockAudioFromGesture(): void {
+    if (this.destroyed) return;
+    if (!this.gestureContext) {
+      const Context = window.AudioContext
+        ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (Context) {
+        this.gestureContext = new Context({ latencyHint: 'interactive' });
+      }
+    }
+
+    void this.gestureContext?.resume().catch(() => {});
+    if (this.tone) {
+      this.attachGestureContext(this.tone);
+      void this.tone.start().catch(() => {});
+    }
+  }
+
+  /** Resume the shared context, safe to call repeatedly after the gesture path. */
   async unlockAudio(): Promise<void> {
-    await Tone.start();
-    // Also explicitly resume context for iOS Safari edge cases
-    if (Tone.getContext().state !== 'running') {
-      await Tone.getContext().resume();
+    const tone = await this.loadTone();
+    this.attachGestureContext(tone);
+    await tone.start();
+    if (tone.getContext().state !== 'running') {
+      await tone.getContext().resume();
+    }
+  }
+
+  private async loadTone(): Promise<Tone> {
+    if (this.tone) return this.tone;
+    if (this.destroyed) throw new Error('Audio engine has been destroyed');
+    if (!this.tonePromise) {
+      this.tonePromise = import('./toneRuntime').then(tone => {
+        if (this.destroyed) throw new Error('Audio engine has been destroyed');
+        this.attachGestureContext(tone);
+        this.tone = tone;
+        return tone;
+      }).catch(error => {
+        this.tonePromise = null;
+        throw error;
+      });
+    }
+    return this.tonePromise;
+  }
+
+  private attachGestureContext(tone: Tone): void {
+    if (!this.gestureContext) return;
+    const rawContext = tone.getContext().rawContext;
+    if (rawContext !== this.gestureContext) {
+      tone.setContext(this.gestureContext, true);
     }
   }
 
   private async doInit(): Promise<void> {
     const generation = this.lifecycleGeneration;
+    const tone = await this.loadTone();
     await this.unlockAudio();
 
-    // Use Salamander Grand Piano samples
-    const baseUrl = 'https://tonejs.github.io/audio/salamander/';
-    const sampler = new Tone.Sampler({
-      urls: {
-        A0: 'A0.mp3', C1: 'C1.mp3', 'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
-        A1: 'A1.mp3', C2: 'C2.mp3', 'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
-        A2: 'A2.mp3', C3: 'C3.mp3', 'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3',
-        A3: 'A3.mp3', C4: 'C4.mp3', 'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3',
-        A4: 'A4.mp3', C5: 'C5.mp3', 'D#5': 'Ds5.mp3', 'F#5': 'Fs5.mp3',
-        A5: 'A5.mp3', C6: 'C6.mp3', 'D#6': 'Ds6.mp3', 'F#6': 'Fs6.mp3',
-        A6: 'A6.mp3', C7: 'C7.mp3', 'D#7': 'Ds7.mp3', 'F#7': 'Fs7.mp3',
-        A7: 'A7.mp3', C8: 'C8.mp3',
-      },
-      baseUrl,
+    const entries = Object.entries(SAMPLE_URLS);
+    this.emitLoadState('loading', 0);
+    const sampleBuffers = await this.loadSampleBuffers(tone, entries, generation);
+
+    if (generation !== this.lifecycleGeneration || this.destroyed) return;
+
+    const sampler = new tone.Sampler({
+      urls: sampleBuffers,
       release: 1,
     }).toDestination();
+    sampler.volume.value = this.volumeDb;
 
-    try {
-      // Wait for samples to load
-      await Tone.loaded();
-    } catch (error) {
-      sampler.dispose();
-      throw error;
-    }
-
-    if (generation !== this.lifecycleGeneration) {
-      sampler.dispose();
-      return;
-    }
-
-    // Metronome click synth
-    const metronomeSynth = new Tone.Synth({
+    const metronomeSynth = new tone.Synth({
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
       volume: -15,
     }).toDestination();
 
-    sampler.volume.value = this.volumeDb;
+    if (generation !== this.lifecycleGeneration || this.destroyed) {
+      sampler.dispose();
+      metronomeSynth.dispose();
+      return;
+    }
 
     this.sampler = sampler;
     this.metronomeSynth = metronomeSynth;
     this.isReady = true;
+    this.emitLoadState('ready', entries.length);
+
+    if (this.metronomeEnabled && !this.playbackActive) {
+      this.startStandaloneMetronome();
+    }
+  }
+
+  private async loadSampleBuffers(
+    tone: Tone,
+    entries: [string, string][],
+    generation: number,
+  ): Promise<Record<string, AudioBuffer>> {
+    const result: Record<string, AudioBuffer> = {};
+    const wrappers: ToneModule.ToneAudioBuffer[] = [];
+    let nextIndex = 0;
+    let loaded = 0;
+    let firstError: Error | null = null;
+
+    const worker = async () => {
+      while (!firstError) {
+        const index = nextIndex++;
+        if (index >= entries.length) return;
+        const [note, file] = entries[index];
+        try {
+          const wrapper = await tone.ToneAudioBuffer.fromUrl(`${SAMPLE_BASE_URL}${file}`);
+          wrappers.push(wrapper);
+          const buffer = wrapper.get();
+          if (!buffer) throw new Error(`Decoded sample was empty: ${file}`);
+          result[note] = buffer;
+          loaded++;
+          if (generation === this.lifecycleGeneration && !this.destroyed) {
+            this.emitLoadState('loading', loaded);
+          }
+        } catch (error) {
+          firstError = error instanceof Error ? error : new Error(`Failed to load ${file}`);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(SAMPLE_CONCURRENCY, entries.length) }, () => worker()),
+    );
+    wrappers.forEach(buffer => buffer.dispose());
+
+    if (firstError) throw firstError;
+    return result;
+  }
+
+  private emitLoadState(
+    state: AudioLoadProgress['state'],
+    loadedSamples: number,
+    error?: string,
+  ): void {
+    this.stateListener?.({
+      state,
+      loadedSamples,
+      totalSamples: Object.keys(SAMPLE_URLS).length,
+      ...(error ? { error } : {}),
+    });
   }
 
   get ready(): boolean {
@@ -99,6 +252,7 @@ export class AudioEngine {
   }
 
   setVolume(db: number): void {
+    if (Number.isNaN(db)) return;
     this.volumeDb = db;
     if (this.sampler) this.sampler.volume.value = db;
   }
@@ -107,171 +261,237 @@ export class AudioEngine {
     return this.sampler?.volume.value ?? this.volumeDb;
   }
 
-  playNote(midiNumber: number, duration: number = 0.5, velocity: number = 0.8): void {
-    if (!this.sampler || !this.isReady) return;
-    const noteName = midiToNoteName(midiNumber);
-    this.sampler.triggerAttackRelease(noteName, duration, Tone.now(), velocity);
+  playNote(midiNumber: number, duration = 0.5, velocity = 0.8): void {
+    if (!this.sampler || !this.isReady || !this.tone) return;
+    const safeDuration = Number.isFinite(duration) ? Math.max(0.01, duration) : 0.5;
+    this.sampler.triggerAttackRelease(
+      midiToNoteName(midiNumber), safeDuration, this.tone.now(), this.normalizeVelocity(velocity),
+    );
   }
 
-  noteOn(midiNumber: number, velocity: number = 0.8): void {
-    if (!this.sampler || !this.isReady) return;
-    const normalizedVelocity = Number.isFinite(velocity)
-      ? Math.max(0, Math.min(1, velocity))
-      : 0.8;
-    this.sampler.triggerAttack(midiToNoteName(midiNumber), Tone.now(), normalizedVelocity);
+  noteOn(midiNumber: number, velocity = 0.8): void {
+    if (!this.sampler || !this.isReady || !this.tone) return;
+    this.sampler.triggerAttack(
+      midiToNoteName(midiNumber), this.tone.now(), this.normalizeVelocity(velocity),
+    );
   }
 
   noteOff(midiNumber: number): void {
-    if (!this.sampler || !this.isReady) return;
-    this.sampler.triggerRelease(midiToNoteName(midiNumber), Tone.now());
+    if (!this.sampler || !this.isReady || !this.tone) return;
+    this.sampler.triggerRelease(midiToNoteName(midiNumber), this.tone.now());
+  }
+
+  private normalizeVelocity(velocity: number): number {
+    return Number.isFinite(velocity) ? Math.max(0, Math.min(1, velocity)) : 0.8;
   }
 
   schedulePlayback(
     events: NoteEvent[],
     hand: HandSelection,
-    onCursorAdvance: (index: number) => void,
-    onComplete: () => void,
-    tempoMap: TempoChange[] = [],
+    callbacks: PlaybackCallbacks,
+    options: PlaybackScheduleOptions = {},
   ): void {
-    this.clearSchedule();
-    this.cursorCallback = onCursorAdvance;
-    this.completionCallback = onComplete;
+    const tone = this.tone;
+    if (!tone) return;
 
-    const transport = Tone.getTransport();
+    const transport = tone.getTransport();
+    transport.stop();
+    this.clearPlaybackSchedule();
+    this.clearMetronomeSchedule();
+    this.transportStartedForMetronome = false;
+
+    const generation = this.scheduleGeneration;
+    const tempoMap = options.tempoMap ?? [];
+    const leadInBeats = Math.max(0, Math.trunc(options.leadInBeats ?? 0));
+    const ppq = transport.PPQ;
     this.activePlaybackTempo = tempoMap[0]?.bpm ?? this._tempo;
     transport.bpm.value = this.activePlaybackTempo * this._tempoScale;
     transport.position = 0;
+    transport.loop = false;
+    this.playbackActive = true;
 
-    const staffFilter = hand === 'both' ? null : (hand === 'right' ? 1 : 2);
-    const ppq = transport.PPQ;
+    this.scheduleCountIn(leadInBeats, callbacks, generation, ppq);
 
-    // Schedule tempo changes in musical time. The callback reads the current
-    // scale so moving the tempo control during playback takes effect without
-    // rebuilding every note event.
     for (const change of tempoMap.slice(1)) {
-      const tempoId = transport.schedule((time) => {
+      const tempoId = transport.schedule(time => {
+        if (generation !== this.scheduleGeneration) return;
         this.activePlaybackTempo = change.bpm;
         transport.bpm.setValueAtTime(change.bpm * this._tempoScale, time);
-      }, `${change.timestampBeats * ppq}i`);
+      }, `${(leadInBeats + change.timestampBeats) * ppq}i`);
       this.scheduledEvents.push(tempoId);
     }
 
+    const staffFilter = hand === 'both' ? null : hand === 'right' ? 1 : 2;
     for (const event of events) {
-      const filteredNotes = staffFilter
-        ? event.notes.filter(n => n.staff === staffFilter)
+      const notes = staffFilter
+        ? event.notes.filter(note => note.staff === staffFilter)
         : event.notes;
+      if (notes.length === 0) continue;
 
-      if (filteredNotes.length === 0) continue;
-
-      const eventId = transport.schedule((time) => {
-        for (const note of filteredNotes) {
-          if (this.sampler) {
-            const name = midiToNoteName(note.midi);
-            const dur = `${Math.max(1, note.durationBeats * ppq)}i`;
-            this.sampler.triggerAttackRelease(name, dur, time, note.velocity);
-          }
+      const eventId = transport.schedule(time => {
+        if (generation !== this.scheduleGeneration) return;
+        for (const note of notes) {
+          const duration = `${Math.max(1, note.durationBeats * ppq)}i`;
+          this.sampler?.triggerAttackRelease(
+            midiToNoteName(note.midi), duration, time, this.normalizeVelocity(note.velocity),
+          );
         }
-        // Update cursor on the main thread
-        Tone.getDraw().schedule(() => {
-          this.cursorCallback?.(event.index);
+        tone.getDraw().schedule(() => {
+          if (generation === this.scheduleGeneration) callbacks.onCursorAdvance(event.index);
         }, time);
-      }, `${event.timestampBeats * ppq}i`);
-
+      }, `${(leadInBeats + event.timestampBeats) * ppq}i`);
       this.scheduledEvents.push(eventId);
     }
 
-    // Schedule completion
-    if (events.length > 0) {
-      const lastEvent = events[events.length - 1];
-      const maxDurationBeats = lastEvent.notes.length > 0
-        ? Math.max(...lastEvent.notes.map(note => note.durationBeats))
-        : 1;
-      const endTicks = (lastEvent.timestampBeats + maxDurationBeats + 0.25) * ppq;
-
-      const endId = transport.schedule(() => {
-        Tone.getDraw().schedule(() => {
-          this.completionCallback?.();
-        }, Tone.now());
+    const playbackEndBeats = this.getPlaybackEndBeats(events);
+    if (options.loop && playbackEndBeats > 0) {
+      transport.loopStart = `${leadInBeats * ppq}i`;
+      transport.loopEnd = `${(leadInBeats + playbackEndBeats) * ppq}i`;
+      transport.loop = true;
+    } else if (events.length > 0) {
+      const endTicks = (leadInBeats + playbackEndBeats + 0.25) * ppq;
+      const endId = transport.schedule(time => {
+        tone.getDraw().schedule(() => {
+          if (generation === this.scheduleGeneration) callbacks.onComplete();
+        }, time);
       }, `${endTicks}i`);
       this.scheduledEvents.push(endId);
     }
-  }
 
-  async countIn(beats: number = 4, onBeat?: (beat: number) => void): Promise<boolean> {
-    if (!this.metronomeSynth || !this.isReady) return true;
-    this.cancelCountIn();
-    const generation = this.countInGeneration;
-    const interval = 60 / (this._tempo * this._tempoScale);
-
-    for (let i = 0; i < beats; i++) {
-      if (generation !== this.countInGeneration) return false;
-      const freq = i === 0 ? 1200 : 900;
-      this.metronomeSynth.triggerAttackRelease(freq, '16n');
-      onBeat?.(i + 1);
-      if (!await this.waitForCountInBeat(interval * 1000, generation)) return false;
+    if (this.metronomeEnabled) {
+      this.scheduleMetronome(leadInBeats);
     }
-    return generation === this.countInGeneration;
   }
 
-  play(): void {
-    Tone.getTransport().start();
+  private scheduleCountIn(
+    beats: number,
+    callbacks: PlaybackCallbacks,
+    generation: number,
+    ppq: number,
+  ): void {
+    if (beats === 0 || !this.tone) return;
+    const tone = this.tone;
+    const transport = tone.getTransport();
+
+    for (let index = 0; index < beats; index++) {
+      const beatId = transport.schedule(time => {
+        if (generation !== this.scheduleGeneration) return;
+        const frequency = index === 0 ? 1200 : 900;
+        this.metronomeSynth?.triggerAttackRelease(frequency, '16n', time);
+        tone.getDraw().schedule(() => {
+          if (generation === this.scheduleGeneration) {
+            callbacks.onCountInBeat?.(index + 1, beats);
+          }
+        }, time);
+      }, `${index * ppq}i`);
+      this.scheduledEvents.push(beatId);
+    }
+
+    const completeId = transport.schedule(time => {
+      tone.getDraw().schedule(() => {
+        if (generation === this.scheduleGeneration) callbacks.onCountInComplete?.();
+      }, time);
+    }, `${beats * ppq}i`);
+    this.scheduledEvents.push(completeId);
   }
 
-  pause(): void {
-    Tone.getTransport().pause();
+  private getPlaybackEndBeats(events: NoteEvent[]): number {
+    let end = 0;
+    for (const event of events) {
+      for (const note of event.notes) {
+        end = Math.max(end, event.timestampBeats + Math.max(0, note.durationBeats));
+      }
+    }
+    return end;
   }
 
-  resume(): void {
-    Tone.getTransport().start();
-  }
-
-  stop(): void {
+  async countIn(beats = 4, onBeat?: (beat: number) => void): Promise<boolean> {
+    if (!this.metronomeSynth || !this.isReady || !this.tone) return true;
     this.cancelCountIn();
-    Tone.getTransport().stop();
-    this.sampler?.releaseAll();
-    this.clearSchedule();
+    const tone = this.tone;
+    const generation = this.countInGeneration;
+    const count = Math.max(1, Math.min(16, Math.trunc(beats)));
+    const interval = 60 / (this._tempo * this._tempoScale);
+    const startTime = tone.now() + 0.03;
+    const timerIds: number[] = [];
+
+    return new Promise(resolve => {
+      for (let index = 0; index < count; index++) {
+        const frequency = index === 0 ? 1200 : 900;
+        this.metronomeSynth?.triggerAttackRelease(
+          frequency, '16n', startTime + index * interval,
+        );
+        timerIds.push(tone.getContext().setTimeout(() => {
+          if (generation === this.countInGeneration) onBeat?.(index + 1);
+        }, index * interval));
+      }
+
+      timerIds.push(tone.getContext().setTimeout(() => {
+        if (this.countInTask?.resolve === resolve) this.countInTask = null;
+        resolve(generation === this.countInGeneration);
+      }, count * interval));
+      this.countInTask = { timerIds, resolve };
+    });
   }
 
   cancelCountIn(): void {
     this.countInGeneration++;
-    if (this.countInDelay) {
-      clearTimeout(this.countInDelay.timerId);
-      const { resolve } = this.countInDelay;
-      this.countInDelay = null;
-      resolve(false);
+    const task = this.countInTask;
+    if (!task) return;
+    this.countInTask = null;
+    const context = this.tone?.getContext();
+    for (const timerId of task.timerIds) context?.clearTimeout(timerId);
+    task.resolve(false);
+  }
+
+  play(): void {
+    this.tone?.getTransport().start();
+  }
+
+  pause(): void {
+    this.tone?.getTransport().pause();
+  }
+
+  resume(): void {
+    this.tone?.getTransport().start();
+  }
+
+  stop(): void {
+    this.cancelCountIn();
+    const tone = this.tone;
+    if (!tone) return;
+
+    const transport = tone.getTransport();
+    transport.stop();
+    transport.loop = false;
+    this.playbackActive = false;
+    this.transportStartedForMetronome = false;
+    this.sampler?.releaseAll();
+    this.clearPlaybackSchedule();
+    this.clearMetronomeSchedule();
+
+    if (this.metronomeEnabled && this.isReady) {
+      this.startStandaloneMetronome();
     }
   }
 
-  private waitForCountInBeat(milliseconds: number, generation: number): Promise<boolean> {
-    return new Promise(resolve => {
-      const timerId = setTimeout(() => {
-        if (this.countInDelay?.timerId === timerId) {
-          this.countInDelay = null;
-        }
-        resolve(generation === this.countInGeneration);
-      }, milliseconds);
-      this.countInDelay = { timerId, resolve };
-    });
-  }
-
-  private clearSchedule(): void {
-    const transport = Tone.getTransport();
-    for (const id of this.scheduledEvents) {
-      transport.clear(id);
-    }
+  private clearPlaybackSchedule(): void {
+    this.scheduleGeneration++;
+    if (!this.tone) return;
+    const transport = this.tone.getTransport();
+    for (const id of this.scheduledEvents) transport.clear(id);
     this.scheduledEvents = [];
-    transport.cancel();
-    Tone.getDraw().cancel();
-    this.cursorCallback = null;
-    this.completionCallback = null;
+    this.tone.getDraw().cancel();
   }
 
   setTempo(bpm: number): void {
     if (!Number.isFinite(bpm)) return;
     this._tempo = Math.max(1, bpm);
-    this.activePlaybackTempo = this._tempo;
-    Tone.getTransport().bpm.value = this._tempo * this._tempoScale;
-    if (this.metronomeEnabled) this.startMetronome();
+    if (!this.playbackActive) this.activePlaybackTempo = this._tempo;
+    const transport = this.tone?.getTransport();
+    if (transport) {
+      transport.bpm.value = this.activePlaybackTempo * this._tempoScale;
+    }
   }
 
   getTempo(): number {
@@ -280,39 +500,77 @@ export class AudioEngine {
 
   setTempoScale(scale: number): void {
     if (!Number.isFinite(scale)) return;
-    this._tempoScale = Math.max(0.25, Math.min(2.0, scale));
-    Tone.getTransport().bpm.value = this.activePlaybackTempo * this._tempoScale;
-    if (this.metronomeEnabled) this.startMetronome();
+    this._tempoScale = Math.max(0.25, Math.min(2, scale));
+    const transport = this.tone?.getTransport();
+    if (transport) {
+      transport.bpm.value = this.activePlaybackTempo * this._tempoScale;
+    }
   }
 
   getTempoScale(): number {
     return this._tempoScale;
   }
 
-  startMetronome(bpm?: number): void {
-    this.stopMetronome();
+  startMetronome(): void {
     this.metronomeEnabled = true;
-    const tempo = bpm ?? (this._tempo * this._tempoScale);
-    const interval = 60 / tempo;
+    if (!this.isReady || !this.tone || !this.metronomeSynth) return;
+    if (this.playbackActive) {
+      this.scheduleMetronome(this.getCurrentBeatOffset());
+    } else {
+      this.startStandaloneMetronome();
+    }
+  }
 
-    let beat = 0;
-    const tick = () => {
-      if (!this.metronomeEnabled) return;
-      const freq = beat % 4 === 0 ? 1000 : 800;
-      this.metronomeSynth?.triggerAttackRelease(freq, '16n');
-      beat++;
-    };
+  private startStandaloneMetronome(): void {
+    if (!this.tone || !this.metronomeSynth || !this.metronomeEnabled) return;
+    const transport = this.tone.getTransport();
+    transport.stop();
+    transport.loop = false;
+    transport.position = 0;
+    transport.bpm.value = this._tempo * this._tempoScale;
+    this.activePlaybackTempo = this._tempo;
+    this.scheduleMetronome(0);
+    transport.start();
+    this.transportStartedForMetronome = true;
+  }
 
-    tick();
-    this.metronomeInterval = window.setInterval(tick, interval * 1000);
+  private scheduleMetronome(startAtBeats: number): void {
+    if (!this.tone || !this.metronomeSynth) return;
+    this.clearMetronomeSchedule();
+    const transport = this.tone.getTransport();
+    const ppq = transport.PPQ;
+    let fallbackBeat = Math.max(0, Math.round(startAtBeats));
+
+    this.metronomeEventId = transport.scheduleRepeat(time => {
+      const ticks = transport.getTicksAtTime?.(time);
+      const beat = Number.isFinite(ticks) ? Math.round(ticks / ppq) : fallbackBeat++;
+      const frequency = beat % 4 === 0 ? 1000 : 800;
+      this.metronomeSynth?.triggerAttackRelease(frequency, '16n', time);
+    }, '4n', `${Math.max(0, startAtBeats) * ppq}i`);
+  }
+
+  private getCurrentBeatOffset(): number {
+    const transport = this.tone?.getTransport();
+    if (!transport) return 0;
+    return Math.ceil(transport.ticks / transport.PPQ);
   }
 
   stopMetronome(): void {
     this.metronomeEnabled = false;
-    if (this.metronomeInterval !== null) {
-      clearInterval(this.metronomeInterval);
-      this.metronomeInterval = null;
+    this.clearMetronomeSchedule();
+    if (this.transportStartedForMetronome && this.tone) {
+      const transport = this.tone.getTransport();
+      transport.stop();
+      transport.position = 0;
+      this.transportStartedForMetronome = false;
     }
+  }
+
+  private clearMetronomeSchedule(): void {
+    if (this.metronomeEventId !== null && this.tone) {
+      this.tone.getTransport().clear(this.metronomeEventId);
+    }
+    this.metronomeEventId = null;
   }
 
   isMetronomeEnabled(): boolean {
@@ -320,11 +578,27 @@ export class AudioEngine {
   }
 
   getTransportPosition(): number {
-    return Tone.getTransport().seconds;
+    return this.tone?.getTransport().seconds ?? 0;
+  }
+
+  getDiagnostics(): {
+    ready: boolean;
+    scheduledPlaybackEvents: number;
+    metronomeScheduled: boolean;
+    playbackActive: boolean;
+  } {
+    return {
+      ready: this.isReady,
+      scheduledPlaybackEvents: this.scheduledEvents.length,
+      metronomeScheduled: this.metronomeEventId !== null,
+      playbackActive: this.playbackActive,
+    };
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.lifecycleGeneration++;
+    this.destroyed = true;
     this.stop();
     this.stopMetronome();
     this.sampler?.dispose();
@@ -333,5 +607,9 @@ export class AudioEngine {
     this.metronomeSynth = null;
     this.isReady = false;
     this.initPromise = null;
+    this.tonePromise = null;
+    const context = this.gestureContext;
+    this.gestureContext = null;
+    if (context && context.state !== 'closed') void context.close().catch(() => {});
   }
 }

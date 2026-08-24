@@ -1,6 +1,6 @@
 import type {
   NoteEvent, SongInfo, HandSelection, AppMode, PlaybackState, PracticeState,
-  AppEventName, AppEventMap,
+  AppEventName, AppEventMap, PlaybackStartOptions,
 } from './types';
 import { PRELOADED_SONGS, filenameToTitle } from './types';
 import { EventEmitter } from './events';
@@ -21,7 +21,7 @@ export class PianoApp {
   readonly events = new EventEmitter();
   readonly renderer: ScoreRenderer;
   readonly analyzer = new ScoreAnalyzer();
-  readonly audio = new AudioEngine();
+  readonly audio: AudioEngine;
   readonly inputManager = new InputManager();
   readonly midiInput: MidiInput;
   readonly keyboardInput: KeyboardInput;
@@ -45,6 +45,9 @@ export class PianoApp {
     keyboardContainer?: HTMLElement,
   ) {
     this.renderer = new ScoreRenderer(scoreContainer);
+    this.audio = new AudioEngine(progress => {
+      this.events.emit('audioLoadStateChanged', progress);
+    });
     this.midiInput = new MidiInput(this.inputManager);
     this.keyboardInput = new KeyboardInput(this.inputManager);
 
@@ -215,25 +218,39 @@ export class PianoApp {
     song: SongInfo,
     generation: number,
   ): Promise<boolean> {
-    const rendered = await this.renderer.load(source);
-    if (!rendered || !this.isCurrentLoad(generation)) return false;
+    this.events.emit('songLoadStateChanged', { state: 'loading', title: song.title });
+    try {
+      const rendered = await this.renderer.load(source);
+      if (!rendered || !this.isCurrentLoad(generation)) return false;
 
-    const osmd = this.renderer.getOSMD();
-    if (!osmd) throw new Error(`Score renderer did not load "${song.title}"`);
+      const osmd = this.renderer.getOSMD();
+      if (!osmd) throw new Error(`Score renderer did not load "${song.title}"`);
 
-    this.analyzer.analyze(osmd);
-    this.audio.setTempo(this.analyzer.getDefaultTempo());
-    if (this.virtualKeyboard) {
-      const allMidis = this.analyzer.getTimeline().flatMap(event => event.notes.map(note => note.midi));
-      this.virtualKeyboard.adjustRangeForSong(allMidis);
+      this.analyzer.analyze(osmd);
+      this.audio.setTempo(this.analyzer.getDefaultTempo());
+      if (this.virtualKeyboard) {
+        const allMidis = this.analyzer.getTimeline().flatMap(event => event.notes.map(note => note.midi));
+        this.virtualKeyboard.adjustRangeForSong(allMidis);
+      }
+
+      if (!this.isCurrentLoad(generation)) return false;
+      this.loadedSong = song;
+      this.renderer.setHand(this.currentHand);
+      this.scoreInteraction.buildMeasureMap();
+      this.events.emit('songLoadStateChanged', { state: 'ready', title: song.title });
+      this.events.emit('loaded', { songId: song.id });
+      return true;
+    } catch (error) {
+      if (this.isCurrentLoad(generation)) {
+        const message = error instanceof Error ? error.message : 'Unable to render this score';
+        this.events.emit('songLoadStateChanged', {
+          state: 'error',
+          title: song.title,
+          error: message,
+        });
+      }
+      throw error;
     }
-
-    if (!this.isCurrentLoad(generation)) return false;
-    this.loadedSong = song;
-    this.renderer.setHand(this.currentHand);
-    this.scoreInteraction.buildMeasureMap();
-    this.events.emit('loaded', { songId: song.id });
-    return true;
   }
 
   getSongList(): SongInfo[] {
@@ -329,9 +346,9 @@ export class PianoApp {
 
   // --- Play Mode ---
 
-  async play(): Promise<void> {
+  async play(options?: PlaybackStartOptions): Promise<void> {
     if (this.currentMode === 'play') {
-      await this.playMode.start();
+      await this.playMode.start(options);
     }
   }
 
