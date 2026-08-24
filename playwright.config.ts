@@ -8,7 +8,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // OSMD's large SVG fixtures can exhaust the local dev server/browser when
+  // Playwright defaults to all CPU cores. Two workers keeps the full suite stable.
+  workers: process.env.CI ? 1 : 2,
   reporter: 'list',
   timeout: 30000,
   use: {

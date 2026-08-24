@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'player-v1';
+const CACHE_NAME = 'player-v2';
 const SAMPLE_CACHE = 'player-samples-v1';
 
 // App shell files to precache (updated on each deploy)
@@ -37,6 +37,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
 
   // Cache-first for Salamander piano samples (large, static files)
@@ -47,7 +49,7 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request).then((response) => {
             if (response.ok) {
-              cache.put(event.request, response.clone());
+              cache.put(event.request, response.clone()).catch(() => {});
             }
             return response;
           });
@@ -57,19 +59,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for song files (MXL files from our own server)
-  if (url.pathname.startsWith('/songs/') && url.pathname.endsWith('.mxl')) {
+  // Network-first keeps edited scores fresh while retaining offline access.
+  if (url.origin === self.location.origin &&
+      url.pathname.startsWith('/songs/') &&
+      /\.(mxl|musicxml|xml)$/i.test(url.pathname)) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
-        cache.match(event.request).then((cached) => {
-          if (cached) return cached;
-          return fetch(event.request).then((response) => {
+        fetch(event.request)
+          .then((response) => {
             if (response.ok) {
-              cache.put(event.request, response.clone());
+              cache.put(event.request, response.clone()).catch(() => {});
             }
             return response;
-          });
-        })
+          })
+          .catch(async () => (await cache.match(event.request)) ?? Response.error())
       )
     );
     return;
@@ -83,13 +86,20 @@ self.addEventListener('fetch', (event) => {
           if (response.ok && event.request.method === 'GET') {
             // Update cache with fresh response
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
             return response;
           }
           // Server error (5xx/4xx) — try cached version before returning error
           return caches.match(event.request).then((cached) => cached || response);
         })
-        .catch(() => caches.match(event.request))
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          if (event.request.mode === 'navigate') {
+            return (await caches.match('/index.html')) ?? Response.error();
+          }
+          return Response.error();
+        })
     );
     return;
   }
