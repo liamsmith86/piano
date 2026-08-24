@@ -18,6 +18,7 @@ export class PracticeMode {
   private active = false;
   private cursorIndex = 0;
   private timeline: NoteEvent[] = [];
+  private fullEventByIndex = new Map<number, NoteEvent>();
   private filteredTimeline: NoteEvent[] = [];
   private hand: HandSelection = 'both';
   private accompaniment = false;
@@ -32,6 +33,7 @@ export class PracticeMode {
 
   private hitCount = new Map<number, number>(); // midi → count of hits
   private expectedMidis: number[] = [];
+  private expectedCounts = new Map<number, number>();
 
   // Stats
   private totalNotes = 0;
@@ -68,6 +70,7 @@ export class PracticeMode {
     const generation = ++this.sessionGeneration;
 
     this.timeline = this.analyzer.getTimeline();
+    this.fullEventByIndex = new Map(this.timeline.map(event => [event.index, event]));
     if (this.timeline.length === 0) {
       console.warn('Cannot start practice: no notes in timeline');
       return;
@@ -97,6 +100,7 @@ export class PracticeMode {
     this.syncCursorToIndex();
     this.updateExpectedNotes();
     this.highlightExpected();
+    this.playCurrentAccompaniment();
     this.startAutoAdvanceTimer();
 
     this.inputManager.addListener(this.inputHandler);
@@ -117,6 +121,8 @@ export class PracticeMode {
     this.renderer.cursorHide();
     this.virtualKeyboard?.highlightKeys([]);
     this.expectedMidis = [];
+    this.expectedCounts.clear();
+    this.fullEventByIndex.clear();
     this.hitCount.clear();
     if (wasActive) {
       this.events.emit('practiceStateChanged', { active: false });
@@ -129,7 +135,7 @@ export class PracticeMode {
     const midi = event.midiNumber;
 
     // Count how many times this midi is expected vs how many times hit
-    const expectedCount = this.expectedMidis.filter(m => m === midi).length;
+    const expectedCount = this.expectedCounts.get(midi) ?? 0;
     const currentHits = this.hitCount.get(midi) ?? 0;
     const isExpected = currentHits < expectedCount;
 
@@ -145,10 +151,9 @@ export class PracticeMode {
       this.startAutoAdvanceTimer();
 
       // Check if all notes in this chord are hit (count-aware)
-      const allHit = this.expectedMidis.every(m => {
-        const needed = this.expectedMidis.filter(x => x === m).length;
-        return (this.hitCount.get(m) ?? 0) >= needed;
-      });
+      const allHit = [...this.expectedCounts].every(([expectedMidi, needed]) =>
+        (this.hitCount.get(expectedMidi) ?? 0) >= needed
+      );
       if (allHit) {
         this.correctCount++;
         this.streak++;
@@ -198,6 +203,7 @@ export class PracticeMode {
         this.syncCursorToIndex();
         this.updateExpectedNotes();
         this.highlightExpected();
+        this.playCurrentAccompaniment();
         this.startAutoAdvanceTimer();
         this.events.emit('cursorAdvanced', { from: prevIndex, to: 0 });
         return;
@@ -218,14 +224,10 @@ export class PracticeMode {
       this.renderer.resetPlayedNotes();
     }
 
-    // Play accompaniment for inactive hand if enabled
-    if (this.accompaniment && this.hand !== 'both') {
-      this.playAccompaniment(prevIndex);
-    }
-
     this.syncCursorToIndex();
     this.updateExpectedNotes();
     this.highlightExpected();
+    this.playCurrentAccompaniment();
     this.renderer.scrollToCursor();
     this.startAutoAdvanceTimer();
 
@@ -261,6 +263,7 @@ export class PracticeMode {
   }
 
   private updateExpectedNotes(): void {
+    this.expectedCounts.clear();
     const event = this.filteredTimeline[this.cursorIndex];
     if (!event) {
       this.expectedMidis = [];
@@ -268,6 +271,9 @@ export class PracticeMode {
     }
 
     this.expectedMidis = event.notes.map(n => n.midi);
+    for (const midi of this.expectedMidis) {
+      this.expectedCounts.set(midi, (this.expectedCounts.get(midi) ?? 0) + 1);
+    }
   }
 
   private highlightExpected(): void {
@@ -305,12 +311,14 @@ export class PracticeMode {
     this.renderer.showWrongNoteAtCursor(wrongMidi, wrongName);
   }
 
-  private playAccompaniment(fromIndex: number): void {
+  private playCurrentAccompaniment(): void {
+    if (!this.accompaniment || this.hand === 'both') return;
+
     // Find the original timeline event and play notes from the other hand
-    const currentEvent = this.filteredTimeline[fromIndex];
+    const currentEvent = this.filteredTimeline[this.cursorIndex];
     if (!currentEvent) return;
 
-    const fullEvent = this.timeline.find(e => e.index === currentEvent.index);
+    const fullEvent = this.fullEventByIndex.get(currentEvent.index);
     if (!fullEvent) return;
 
     const otherStaff = this.hand === 'right' ? 2 : 1;
@@ -344,7 +352,9 @@ export class PracticeMode {
   }
 
   setAccompaniment(enabled: boolean): void {
+    if (enabled === this.accompaniment) return;
     this.accompaniment = enabled;
+    if (enabled && this.active) this.playCurrentAccompaniment();
   }
 
   setWrongNoteLabels(enabled: boolean): void {
@@ -506,6 +516,7 @@ export class PracticeMode {
     this.syncCursorToIndex();
     this.updateExpectedNotes();
     this.highlightExpected();
+    this.playCurrentAccompaniment();
     this.startAutoAdvanceTimer();
   }
 
@@ -513,6 +524,7 @@ export class PracticeMode {
     this.cursorIndex = 0;
     this.hitCount.clear();
     this.expectedMidis = [];
+    this.expectedCounts.clear();
     this.correctCount = 0;
     this.wrongCount = 0;
     this.wrongNotesList = [];

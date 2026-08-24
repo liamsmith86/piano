@@ -86,6 +86,24 @@ describe('PlayMode', () => {
     expect(renderer.cursorShow).toHaveBeenCalled();
   });
 
+  it('schedules only events for the selected hand', async () => {
+    const mixedTimeline = makeTimeline(3);
+    mixedTimeline[0].notes[0].staff = 2;
+    mixedTimeline[2].notes[0].staff = 2;
+    const analyzer = createMockAnalyzer(mixedTimeline);
+    analyzer.filterByHand.mockImplementation((hand: string) => {
+      const staff = hand === 'left' ? 2 : 1;
+      return mixedTimeline.filter(event => event.notes.some(note => note.staff === staff));
+    });
+    pm = new PlayMode(audio, renderer, analyzer, events);
+    pm.setHand('left');
+
+    await pm.start();
+
+    const scheduledEvents = audio.schedulePlayback.mock.calls[0][0] as NoteEvent[];
+    expect(scheduledEvents.map(event => event.index)).toEqual([0, 2]);
+  });
+
   it('pauses playback', async () => {
     await pm.start();
     pm.pause();

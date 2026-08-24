@@ -127,10 +127,12 @@ describe('PracticeMode - accompaniment', () => {
     expect(pm.isAccompanimentEnabled()).toBe(true);
 
     await pm.start();
+    expect(audio.playNote).toHaveBeenCalledWith(40, expect.any(Number), expect.any(Number));
+    audio.playNote.mockClear();
     im.simulateNoteOn(60); // play right hand note
 
-    // Accompaniment should have played the left hand note (40)
-    expect(audio.playNote).toHaveBeenCalledWith(40, expect.any(Number), expect.any(Number));
+    // Advancing should play the left-hand note aligned with the next prompt.
+    expect(audio.playNote).toHaveBeenCalledWith(44, expect.any(Number), expect.any(Number));
   });
 
   it('does not play accompaniment when disabled', async () => {
@@ -149,7 +151,7 @@ describe('PracticeMode - accompaniment', () => {
     await pm.start();
     im.simulateNoteOn(60);
 
-    // playNote is called for user feedback (note 60), but NOT for accompaniment (note 40)
+    // Disabled accompaniment must not synthesize the other hand.
     expect(audio.playNote).not.toHaveBeenCalledWith(40, expect.any(Number), expect.any(Number));
   });
 });

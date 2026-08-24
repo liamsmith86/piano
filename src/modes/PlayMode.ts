@@ -52,7 +52,7 @@ export class PlayMode {
     this.renderer.clearNoteHighlights();
 
     // Start fresh — filter timeline by loop range if set
-    let fullTimeline = this.analyzer.getTimeline();
+    let fullTimeline = this.analyzer.filterByHand(this.hand);
     if (this.loopStart !== null && this.loopEnd !== null) {
       fullTimeline = fullTimeline.filter(
         e => e.measureNumber >= this.loopStart! && e.measureNumber <= this.loopEnd!
@@ -199,7 +199,7 @@ export class PlayMode {
     this.renderer.clearNoteHighlights();
 
     // Rebuild timeline (respecting loop range)
-    let fullTimeline = this.analyzer.getTimeline();
+    let fullTimeline = this.analyzer.filterByHand(this.hand);
     if (this.loopStart !== null && this.loopEnd !== null) {
       fullTimeline = fullTimeline.filter(
         e => e.measureNumber >= this.loopStart! && e.measureNumber <= this.loopEnd!
