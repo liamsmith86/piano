@@ -26,6 +26,8 @@ export class PracticeMode {
   private loopEnabled = false;
   private autoAdvanceTimeout: number = 0;
   private autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+  private wrongNoteLabels = true;
+  private sessionGeneration = 0;
 
   private hitCount = new Map<number, number>(); // midi → count of hits
   private expectedMidis: number[] = [];
@@ -61,9 +63,8 @@ export class PracticeMode {
   }
 
   async start(): Promise<void> {
-    if (!this.audio.ready) {
-      await this.audio.init();
-    }
+    if (this.active) this.stop();
+    const generation = ++this.sessionGeneration;
 
     this.timeline = this.analyzer.getTimeline();
     if (this.timeline.length === 0) {
@@ -71,27 +72,22 @@ export class PracticeMode {
       return;
     }
 
+    this.updateFilteredTimeline();
+    if (this.filteredTimeline.length === 0) {
+      console.warn('Cannot start practice: no notes for current hand/loop filters');
+      return;
+    }
+
+    if (!this.audio.ready) {
+      await this.audio.init();
+      if (generation !== this.sessionGeneration) return;
+    }
+
     // Clear any visual state from previous session
     this.renderer.clearNoteHighlights();
 
     this.active = true;
-    this.updateFilteredTimeline();
-    if (this.filteredTimeline.length === 0) {
-      this.active = false;
-      console.warn('Cannot start practice: no notes for current hand/loop filters');
-      return;
-    }
-    this.cursorIndex = 0;
-    this.hitCount.clear();
-    this.correctCount = 0;
-    this.wrongCount = 0;
-    this.wrongNotesList = [];
-    this.measureStatsMap.clear();
-    this.lastSyncedOsmdIndex = -1;
-    this.streak = 0;
-    this.bestStreak = 0;
-    this.startTime = Date.now();
-    this.totalNotes = this.filteredTimeline.length;
+    this.resetSessionProgress();
 
     this.renderer.cursorReset();
     this.renderer.cursorShow();
@@ -103,15 +99,27 @@ export class PracticeMode {
     this.startAutoAdvanceTimer();
 
     this.inputManager.addListener(this.inputHandler);
+    this.events.emit('practiceStateChanged', { active: true });
   }
 
   stop(): void {
+    this.sessionGeneration++;
+    this.deactivate();
+  }
+
+  private deactivate(): void {
+    const wasActive = this.active;
     this.active = false;
     this.clearAutoAdvanceTimer();
     this.inputManager.removeListener(this.inputHandler);
     this.renderer.clearNoteHighlights();
     this.renderer.cursorHide();
     this.virtualKeyboard?.highlightKeys([]);
+    this.expectedMidis = [];
+    this.hitCount.clear();
+    if (wasActive) {
+      this.events.emit('practiceStateChanged', { active: false });
+    }
   }
 
   private handleInput(event: InputEvent): void {
@@ -197,11 +205,9 @@ export class PracticeMode {
         return;
       }
       // Song complete
-      this.active = false;
-      this.clearAutoAdvanceTimer();
-      this.inputManager.removeListener(this.inputHandler);
-      this.renderer.clearNoteHighlights();
-      this.events.emit('songEnd', { stats: this.getState() });
+      const completedState = this.getState();
+      this.deactivate();
+      this.events.emit('songEnd', { stats: completedState });
       return;
     }
 
@@ -294,7 +300,7 @@ export class PracticeMode {
   }
 
   private showWrongNoteOnStaff(wrongMidi: number): void {
-    const wrongName = midiToNoteName(wrongMidi);
+    const wrongName = this.wrongNoteLabels ? midiToNoteName(wrongMidi) : undefined;
     this.renderer.showWrongNoteAtCursor(wrongMidi, wrongName);
   }
 
@@ -328,35 +334,20 @@ export class PracticeMode {
   }
 
   setHand(hand: HandSelection): void {
+    if (hand === this.hand) return;
+    this.sessionGeneration++;
     this.hand = hand;
     if (this.active) {
-      // Clear stale visual state from previous hand before rebuilding
-      this.renderer.clearNoteHighlights();
-      this.renderer.resetPlayedNotes();
-      this.clearAutoAdvanceTimer();
-      this.updateFilteredTimeline();
-      if (this.filteredTimeline.length === 0) {
-        this.expectedMidis = [];
-        this.totalNotes = 0;
-        this.cursorIndex = 0;
-        this.lastSyncedOsmdIndex = -1;
-        this.virtualKeyboard?.highlightKeys([]);
-        return;
-      }
-      this.totalNotes = this.filteredTimeline.length;
-      // Reset to beginning with new filter
-      this.cursorIndex = 0;
-      this.hitCount.clear();
-      this.lastSyncedOsmdIndex = -1;
-      this.syncCursorToIndex();
-      this.updateExpectedNotes();
-      this.highlightExpected();
-      this.startAutoAdvanceTimer();
+      this.restartActiveSession();
     }
   }
 
   setAccompaniment(enabled: boolean): void {
     this.accompaniment = enabled;
+  }
+
+  setWrongNoteLabels(enabled: boolean): void {
+    this.wrongNoteLabels = enabled;
   }
 
   isAccompanimentEnabled(): boolean {
@@ -443,7 +434,7 @@ export class PracticeMode {
   }
 
   setAutoAdvance(timeoutMs: number): void {
-    this.autoAdvanceTimeout = timeoutMs;
+    this.autoAdvanceTimeout = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 0;
     if (this.active) {
       this.startAutoAdvanceTimer();
     }
@@ -456,63 +447,27 @@ export class PracticeMode {
   // --- Loop/Measure Range ---
 
   setLoop(startMeasure: number, endMeasure: number): void {
-    this.loopStart = startMeasure;
-    this.loopEnd = endMeasure;
+    const normalizeMeasure = (measure: number): number => (
+      Number.isFinite(measure) ? Math.max(1, Math.trunc(measure)) : 1
+    );
+    const start = normalizeMeasure(startMeasure);
+    const end = normalizeMeasure(endMeasure);
+    this.sessionGeneration++;
+    this.loopStart = Math.min(start, end);
+    this.loopEnd = Math.max(start, end);
     this.loopEnabled = true;
     if (this.active) {
-      this.clearAutoAdvanceTimer();
-      this.renderer.clearNoteHighlights();
-      this.renderer.resetPlayedNotes();
-      this.updateFilteredTimeline();
-      if (this.filteredTimeline.length === 0) {
-        this.expectedMidis = [];
-        this.totalNotes = 0;
-        this.cursorIndex = 0;
-        this.lastSyncedOsmdIndex = -1;
-        this.virtualKeyboard?.highlightKeys([]);
-        return;
-      }
-      this.totalNotes = this.filteredTimeline.length;
-      // Reset stats when changing loop range
-      this.correctCount = 0;
-      this.wrongCount = 0;
-      this.measureStatsMap.clear();
-      this.streak = 0;
-      this.cursorIndex = 0;
-      this.hitCount.clear();
-      this.lastSyncedOsmdIndex = -1;
-      this.syncCursorToIndex();
-      this.updateExpectedNotes();
-      this.highlightExpected();
-      this.startAutoAdvanceTimer();
+      this.restartActiveSession();
     }
   }
 
   clearLoop(): void {
+    this.sessionGeneration++;
     this.loopStart = null;
     this.loopEnd = null;
     this.loopEnabled = false;
     if (this.active) {
-      this.renderer.clearNoteHighlights();
-      this.renderer.resetPlayedNotes();
-      this.clearAutoAdvanceTimer();
-      this.updateFilteredTimeline();
-      if (this.filteredTimeline.length === 0) {
-        this.expectedMidis = [];
-        this.totalNotes = 0;
-        this.cursorIndex = 0;
-        this.lastSyncedOsmdIndex = -1;
-        this.virtualKeyboard?.highlightKeys([]);
-        return;
-      }
-      this.totalNotes = this.filteredTimeline.length;
-      this.cursorIndex = 0;
-      this.hitCount.clear();
-      this.lastSyncedOsmdIndex = -1;
-      this.syncCursorToIndex();
-      this.updateExpectedNotes();
-      this.highlightExpected();
-      this.startAutoAdvanceTimer();
+      this.restartActiveSession();
     }
   }
 
@@ -523,5 +478,43 @@ export class PracticeMode {
   getLoopRange(): { start: number; end: number } | null {
     if (!this.loopEnabled || this.loopStart === null || this.loopEnd === null) return null;
     return { start: this.loopStart, end: this.loopEnd };
+  }
+
+  private restartActiveSession(): void {
+    this.clearAutoAdvanceTimer();
+    this.renderer.clearNoteHighlights();
+    this.renderer.resetPlayedNotes();
+    this.updateFilteredTimeline();
+
+    if (this.filteredTimeline.length === 0) {
+      this.totalNotes = 0;
+      this.cursorIndex = 0;
+      this.lastSyncedOsmdIndex = -1;
+      this.deactivate();
+      return;
+    }
+
+    this.resetSessionProgress();
+    this.renderer.cursorReset();
+    this.renderer.cursorShow();
+    this.syncCursorToIndex();
+    this.updateExpectedNotes();
+    this.highlightExpected();
+    this.startAutoAdvanceTimer();
+  }
+
+  private resetSessionProgress(): void {
+    this.cursorIndex = 0;
+    this.hitCount.clear();
+    this.expectedMidis = [];
+    this.correctCount = 0;
+    this.wrongCount = 0;
+    this.wrongNotesList = [];
+    this.measureStatsMap.clear();
+    this.lastSyncedOsmdIndex = -1;
+    this.streak = 0;
+    this.bestStreak = 0;
+    this.startTime = Date.now();
+    this.totalNotes = this.filteredTimeline.length;
   }
 }

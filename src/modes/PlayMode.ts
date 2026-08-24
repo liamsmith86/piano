@@ -1,7 +1,7 @@
 import type { AudioEngine } from '../audio/AudioEngine';
 import type { ScoreRenderer } from '../score/ScoreRenderer';
 import type { ScoreAnalyzer } from '../score/ScoreAnalyzer';
-import type { NoteEvent, HandSelection, PlaybackState } from '../types';
+import type { NoteEvent, HandSelection, PlaybackState, TempoChange } from '../types';
 import type { EventEmitter } from '../events';
 
 export class PlayMode {
@@ -18,6 +18,7 @@ export class PlayMode {
   private loopEnd: number | null = null;
   private lastMeasure = 0;        // for detecting repeats
   private eventByIndex = new Map<number, NoteEvent>(); // O(1) lookup by cursor step
+  private playbackGeneration = 0;
 
   constructor(
     audio: AudioEngine,
@@ -34,15 +35,17 @@ export class PlayMode {
   async start(): Promise<void> {
     if (this.state === 'playing') return;
 
-    if (!this.audio.ready) {
-      await this.audio.init();
-    }
-
     if (this.state === 'paused') {
       this.audio.resume();
       this.state = 'playing';
       this.events.emit('playbackStateChanged', { state: 'playing' });
       return;
+    }
+
+    const generation = ++this.playbackGeneration;
+    if (!this.audio.ready) {
+      await this.audio.init();
+      if (generation !== this.playbackGeneration) return;
     }
 
     // Clear any visual state from previous playthrough
@@ -58,30 +61,19 @@ export class PlayMode {
     this.timeline = fullTimeline;
     this.buildEventIndex();
 
-    // Position cursor at the start of the range
-    if (this.timeline.length > 0) {
-      this.renderer.setCursorToMeasure(this.timeline[0].measureNumber);
-    } else {
-      this.renderer.cursorReset();
+    if (this.timeline.length === 0) {
+      this.renderer.cursorHide();
+      return;
     }
+
+    // Position cursor at the start of the range
+    this.renderer.setCursorToMeasure(this.timeline[0].measureNumber);
     this.renderer.cursorShow();
-    this.currentIndex = this.timeline.length > 0 ? this.timeline[0].index : 0;
+    this.currentIndex = this.timeline[0].index;
     this.timelinePosition = 0;
     this.lastMeasure = 0;
 
-    // Offset timestamps so playback starts at time 0
-    const startOffset = this.timeline.length > 0 ? this.timeline[0].timestamp : 0;
-    const offsetTimeline = this.timeline.map(e => ({
-      ...e,
-      timestamp: e.timestamp - startOffset,
-    }));
-
-    this.audio.schedulePlayback(
-      offsetTimeline,
-      this.hand,
-      (index) => this.onCursorAdvance(index),
-      () => this.onComplete(),
-    );
+    this.scheduleSegment(this.timeline, generation);
 
     this.audio.play();
     this.state = 'playing';
@@ -96,16 +88,21 @@ export class PlayMode {
   }
 
   stop(): void {
+    this.playbackGeneration++;
     this.audio.stop();
     this.renderer.clearNoteHighlights();
     this.renderer.cursorReset();
     this.currentIndex = 0;
     this.timelinePosition = 0;
+    const stateChanged = this.state !== 'stopped';
     this.state = 'stopped';
-    this.events.emit('playbackStateChanged', { state: 'stopped' });
+    if (stateChanged) {
+      this.events.emit('playbackStateChanged', { state: 'stopped' });
+    }
   }
 
-  private onCursorAdvance(eventIndex: number): void {
+  private onCursorAdvance(eventIndex: number, generation: number): void {
+    if (generation !== this.playbackGeneration || this.state !== 'playing') return;
     const prevIndex = this.currentIndex;
 
     // Detect repeat: if current event's measure is before the last played measure,
@@ -133,7 +130,9 @@ export class PlayMode {
     this.events.emit('cursorAdvanced', { from: prevIndex, to: this.currentIndex });
   }
 
-  private onComplete(): void {
+  private onComplete(generation: number): void {
+    if (generation !== this.playbackGeneration) return;
+    this.audio.stop();
     this.state = 'stopped';
     this.events.emit('playbackStateChanged', { state: 'stopped' });
     this.events.emit('songEnd', {
@@ -154,20 +153,28 @@ export class PlayMode {
   }
 
   setHand(hand: HandSelection): void {
+    if (hand === this.hand) return;
     this.hand = hand;
-    if (this.state === 'playing') {
+    if (this.state !== 'stopped') {
       this.stop();
     }
   }
 
   setLoop(startMeasure: number, endMeasure: number): void {
-    this.loopStart = startMeasure;
-    this.loopEnd = endMeasure;
+    const normalizeMeasure = (measure: number): number => (
+      Number.isFinite(measure) ? Math.max(1, Math.trunc(measure)) : 1
+    );
+    const start = normalizeMeasure(startMeasure);
+    const end = normalizeMeasure(endMeasure);
+    this.loopStart = Math.min(start, end);
+    this.loopEnd = Math.max(start, end);
+    if (this.state !== 'stopped') this.stop();
   }
 
   clearLoop(): void {
     this.loopStart = null;
     this.loopEnd = null;
+    if (this.state !== 'stopped') this.stop();
   }
 
   getState(): PlaybackState {
@@ -185,6 +192,7 @@ export class PlayMode {
 
   async seekToMeasure(measure: number): Promise<void> {
     const wasPlaying = this.state === 'playing';
+    const generation = ++this.playbackGeneration;
 
     // Stop current audio scheduling
     this.audio.stop();
@@ -202,7 +210,7 @@ export class PlayMode {
 
     // Find position in timeline for this measure
     const seekIdx = this.timeline.findIndex(e => e.measureNumber >= measure);
-    const startFrom = seekIdx >= 0 ? seekIdx : 0;
+    const startFrom = seekIdx >= 0 ? seekIdx : Math.max(0, this.timeline.length - 1);
 
     // Position cursor
     if (this.timeline.length > 0 && startFrom < this.timeline.length) {
@@ -217,20 +225,8 @@ export class PlayMode {
     this.lastMeasure = 0;
 
     if (wasPlaying && this.timeline.length > 0 && startFrom < this.timeline.length) {
-      // Schedule playback from the seek position
       const seekTimeline = this.timeline.slice(startFrom);
-      const startOffset = seekTimeline[0].timestamp;
-      const offsetTimeline = seekTimeline.map(e => ({
-        ...e,
-        timestamp: e.timestamp - startOffset,
-      }));
-
-      this.audio.schedulePlayback(
-        offsetTimeline,
-        this.hand,
-        (index) => this.onCursorAdvance(index),
-        () => this.onComplete(),
-      );
+      this.scheduleSegment(seekTimeline, generation);
       this.audio.play();
       this.state = 'playing';
       this.events.emit('playbackStateChanged', { state: 'playing' });
@@ -248,5 +244,43 @@ export class PlayMode {
     for (const event of this.timeline) {
       this.eventByIndex.set(event.index, event);
     }
+  }
+
+  private scheduleSegment(events: NoteEvent[], generation: number): void {
+    const startSeconds = events[0].timestamp;
+    const startBeats = events[0].timestampBeats;
+    const endBeats = events[events.length - 1].timestampBeats;
+    const offsetTimeline = events.map(event => ({
+      ...event,
+      timestamp: event.timestamp - startSeconds,
+      timestampBeats: event.timestampBeats - startBeats,
+    }));
+
+    this.audio.schedulePlayback(
+      offsetTimeline,
+      this.hand,
+      index => this.onCursorAdvance(index, generation),
+      () => this.onComplete(generation),
+      this.getTempoMapForSegment(startBeats, endBeats),
+    );
+  }
+
+  private getTempoMapForSegment(startBeat: number, endBeat: number): TempoChange[] {
+    const sourceMap = this.analyzer.getTempoMap();
+    let activeBpm = this.analyzer.getDefaultTempo();
+    for (const change of sourceMap) {
+      if (change.timestampBeats > startBeat) break;
+      activeBpm = change.bpm;
+    }
+
+    return [
+      { timestampBeats: 0, bpm: activeBpm },
+      ...sourceMap
+        .filter(change => change.timestampBeats > startBeat && change.timestampBeats <= endBeat)
+        .map(change => ({
+          timestampBeats: change.timestampBeats - startBeat,
+          bpm: change.bpm,
+        })),
+    ];
   }
 }

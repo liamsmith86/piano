@@ -38,6 +38,7 @@ export class PianoApp {
   private uploadedSongs: SongInfo[] = [];
   private discoveredSongs: SongInfo[] = [];
   private loadGeneration = 0; // guards against concurrent loadSong calls
+  private initPromise: Promise<void> | null = null;
 
   constructor(
     scoreContainer: HTMLElement,
@@ -67,9 +68,17 @@ export class PianoApp {
   }
 
   async init(): Promise<void> {
-    await this.audio.init();
-    await this.midiInput.init();
-    this.keyboardInput.init();
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      await this.audio.init();
+      await this.midiInput.init();
+      this.keyboardInput.init();
+    })().catch(error => {
+      this.initPromise = null;
+      throw error;
+    });
+    return this.initPromise;
   }
 
   // --- Song Management ---
@@ -284,6 +293,8 @@ export class PianoApp {
   // --- Mode ---
 
   setMode(mode: AppMode): void {
+    if (mode === this.currentMode) return;
+
     // Stop current mode
     if (this.currentMode === 'play') {
       this.playMode.stop();
@@ -391,11 +402,23 @@ export class PianoApp {
     this.practiceMode.setAutoAdvance(timeoutMs);
   }
 
+  setWrongNoteLabels(enabled: boolean): void {
+    this.practiceMode.setWrongNoteLabels(enabled);
+  }
+
   // --- Loop ---
 
   setLoop(startMeasure: number, endMeasure: number): void {
-    this.practiceMode.setLoop(startMeasure, endMeasure);
-    this.playMode.setLoop(startMeasure, endMeasure);
+    const normalizeMeasure = (measure: number): number => (
+      Number.isFinite(measure) ? Math.max(1, Math.trunc(measure)) : 1
+    );
+    const normalizedStart = normalizeMeasure(startMeasure);
+    const normalizedEnd = normalizeMeasure(endMeasure);
+    const start = Math.min(normalizedStart, normalizedEnd);
+    const end = Math.max(normalizedStart, normalizedEnd);
+
+    this.practiceMode.setLoop(start, end);
+    this.playMode.setLoop(start, end);
   }
 
   clearLoop(): void {
@@ -436,6 +459,7 @@ export class PianoApp {
   // --- Cleanup ---
 
   destroy(): void {
+    this.loadGeneration++;
     this.playMode.stop();
     this.practiceMode.stop();
     this.scoreInteraction.destroy();
@@ -446,5 +470,6 @@ export class PianoApp {
     this.inputManager.destroy();
     this.renderer.destroy();
     this.events.removeAllListeners();
+    this.initPromise = null;
   }
 }

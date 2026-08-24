@@ -5,7 +5,7 @@ export class Toolbar {
   private app: PianoApp;
   private container: HTMLElement;
   private onShowLibrary: (() => void) | null = null;
-  private onPlay: (() => void) | null = null;
+  private onPlay: (() => Promise<void>) | null = null;
   private onShowSettings: (() => void) | null = null;
 
   // Element references
@@ -170,7 +170,7 @@ export class Toolbar {
     // Play/Pause
     this.playBtn.addEventListener('click', async () => {
       if (this.onPlay) {
-        this.onPlay();
+        await this.onPlay();
       } else {
         const mode = this.app.getMode();
         if (mode === 'play') {
@@ -253,7 +253,7 @@ export class Toolbar {
     zoomSlider.addEventListener('input', () => {
       const pct = parseInt(zoomSlider.value);
       zoomLabel.textContent = `${pct}%`;
-      this.app.renderer.setZoom(pct / 100);
+      this.app.setZoom(pct / 100);
     });
 
     tempoPresets.forEach(btn => {
@@ -308,6 +308,7 @@ export class Toolbar {
 
     // Listen for app events to update UI
     this.app.on('playbackStateChanged', () => this.updatePlayButton());
+    this.app.on('practiceStateChanged', () => this.updatePlayButton());
     this.app.on('cursorAdvanced', () => this.updateProgress());
     this.app.on('loaded', () => {
       const song = this.app.getLoadedSong();
@@ -431,7 +432,7 @@ export class Toolbar {
     this.onShowLibrary = cb;
   }
 
-  setOnPlay(cb: () => void): void {
+  setOnPlay(cb: () => Promise<void>): void {
     this.onPlay = cb;
   }
 

@@ -18,6 +18,11 @@ export interface NoteEvent {
   measureNumber: number;
 }
 
+export interface TempoChange {
+  timestampBeats: number;
+  bpm: number;
+}
+
 export type HandSelection = 'both' | 'left' | 'right';
 export type AppMode = 'play' | 'practice';
 export type PlaybackState = 'playing' | 'paused' | 'stopped';
@@ -66,6 +71,7 @@ export interface AppEventMap {
   modeChanged: { mode: AppMode };
   handChanged: { hand: HandSelection };
   playbackStateChanged: { state: PlaybackState };
+  practiceStateChanged: { active: boolean };
   inputNote: InputEvent;
 }
 

@@ -51,6 +51,8 @@ function createMockAnalyzer(timeline: NoteEvent[]) {
   return {
     getTimeline: vi.fn().mockReturnValue(timeline),
     filterByHand: vi.fn().mockReturnValue(timeline),
+    getTempoMap: vi.fn().mockReturnValue([{ timestampBeats: 0, bpm: 120 }]),
+    getDefaultTempo: vi.fn().mockReturnValue(120),
   } as any;
 }
 
@@ -135,6 +137,38 @@ describe('PlayMode', () => {
     expect(pm.getState()).toBe('stopped');
   });
 
+  it('setHand invalidates paused playback instead of resuming the old hand schedule', async () => {
+    await pm.start();
+    pm.pause();
+
+    pm.setHand('left');
+
+    expect(pm.getState()).toBe('stopped');
+    expect(audio.stop).toHaveBeenCalled();
+  });
+
+  it('changing a loop invalidates paused playback', async () => {
+    await pm.start();
+    pm.pause();
+
+    pm.setLoop(2, 3);
+
+    expect(pm.getState()).toBe('stopped');
+    expect(audio.stop).toHaveBeenCalled();
+  });
+
+  it('does not start the transport for an empty timeline', async () => {
+    const emptyMode = new PlayMode(
+      audio, renderer, createMockAnalyzer([]), events,
+    );
+
+    await emptyMode.start();
+
+    expect(emptyMode.getState()).toBe('stopped');
+    expect(audio.schedulePlayback).not.toHaveBeenCalled();
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
   it('getProgress returns correct ratio', () => {
     // Manually set currentIndex by starting and stopping
     expect(pm.getProgress()).toBe(0);
@@ -179,6 +213,34 @@ describe('PlayMode', () => {
 
     expect(pm.getState()).toBe('stopped');
     expect(endFn).toHaveBeenCalled();
+    expect(audio.stop).toHaveBeenCalled();
+  });
+
+  it('ignores queued cursor callbacks after playback has stopped', async () => {
+    await pm.start();
+    const onCursorAdvance = audio.schedulePlayback.mock.calls[0][2];
+
+    pm.stop();
+    renderer.cursorNext.mockClear();
+    onCursorAdvance(3);
+
+    expect(renderer.cursorNext).not.toHaveBeenCalled();
+  });
+
+  it('offsets beat timestamps and tempo changes when seeking', async () => {
+    const analyzer = createMockAnalyzer(timeline);
+    analyzer.getTempoMap.mockReturnValue([
+      { timestampBeats: 0, bpm: 120 },
+      { timestampBeats: 8, bpm: 90 },
+    ]);
+    pm = new PlayMode(audio, renderer, analyzer, events);
+    await pm.start();
+
+    pm.seekToMeasure(3);
+
+    const latestCall = audio.schedulePlayback.mock.calls.at(-1);
+    expect(latestCall?.[0][0].timestampBeats).toBe(0);
+    expect(latestCall?.[4]).toEqual([{ timestampBeats: 0, bpm: 90 }]);
   });
 
   it('does not start if already playing', async () => {

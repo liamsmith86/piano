@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import type { NoteEvent, HandSelection } from '../types';
+import type { NoteEvent, HandSelection, TempoChange } from '../types';
 import { midiToNoteName } from '../types';
 
 export class AudioEngine {
@@ -11,10 +11,17 @@ export class AudioEngine {
   private completionCallback: (() => void) | null = null;
   private _tempo: number = 120;
   private _tempoScale: number = 1.0;
+  private volumeDb = -20;
+  private activePlaybackTempo = 120;
   private metronomeEnabled = false;
   private metronomeInterval: number | null = null;
   private initPromise: Promise<void> | null = null;
-  private countInCancelled = false;
+  private lifecycleGeneration = 0;
+  private countInGeneration = 0;
+  private countInDelay: {
+    timerId: ReturnType<typeof setTimeout>;
+    resolve: (completed: boolean) => void;
+  } | null = null;
 
   async init(): Promise<void> {
     if (this.isReady) return;
@@ -40,11 +47,12 @@ export class AudioEngine {
   }
 
   private async doInit(): Promise<void> {
+    const generation = this.lifecycleGeneration;
     await this.unlockAudio();
 
     // Use Salamander Grand Piano samples
     const baseUrl = 'https://tonejs.github.io/audio/salamander/';
-    this.sampler = new Tone.Sampler({
+    const sampler = new Tone.Sampler({
       urls: {
         A0: 'A0.mp3', C1: 'C1.mp3', 'D#1': 'Ds1.mp3', 'F#1': 'Fs1.mp3',
         A1: 'A1.mp3', C2: 'C2.mp3', 'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
@@ -59,19 +67,30 @@ export class AudioEngine {
       release: 1,
     }).toDestination();
 
-    // Wait for samples to load
-    await Tone.loaded();
+    try {
+      // Wait for samples to load
+      await Tone.loaded();
+    } catch (error) {
+      sampler.dispose();
+      throw error;
+    }
+
+    if (generation !== this.lifecycleGeneration) {
+      sampler.dispose();
+      return;
+    }
 
     // Metronome click synth
-    this.metronomeSynth = new Tone.Synth({
+    const metronomeSynth = new Tone.Synth({
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
       volume: -15,
     }).toDestination();
 
-    // Default to 50% volume (-20dB)
-    this.sampler.volume.value = -20;
+    sampler.volume.value = this.volumeDb;
 
+    this.sampler = sampler;
+    this.metronomeSynth = metronomeSynth;
     this.isReady = true;
   }
 
@@ -80,11 +99,12 @@ export class AudioEngine {
   }
 
   setVolume(db: number): void {
+    this.volumeDb = db;
     if (this.sampler) this.sampler.volume.value = db;
   }
 
   getVolume(): number {
-    return this.sampler?.volume.value ?? 0;
+    return this.sampler?.volume.value ?? this.volumeDb;
   }
 
   playNote(midiNumber: number, duration: number = 0.5, velocity: number = 0.8): void {
@@ -98,16 +118,30 @@ export class AudioEngine {
     hand: HandSelection,
     onCursorAdvance: (index: number) => void,
     onComplete: () => void,
+    tempoMap: TempoChange[] = [],
   ): void {
     this.clearSchedule();
     this.cursorCallback = onCursorAdvance;
     this.completionCallback = onComplete;
 
     const transport = Tone.getTransport();
-    transport.bpm.value = this._tempo * this._tempoScale;
+    this.activePlaybackTempo = tempoMap[0]?.bpm ?? this._tempo;
+    transport.bpm.value = this.activePlaybackTempo * this._tempoScale;
     transport.position = 0;
 
     const staffFilter = hand === 'both' ? null : (hand === 'right' ? 1 : 2);
+    const ppq = transport.PPQ;
+
+    // Schedule tempo changes in musical time. The callback reads the current
+    // scale so moving the tempo control during playback takes effect without
+    // rebuilding every note event.
+    for (const change of tempoMap.slice(1)) {
+      const tempoId = transport.schedule((time) => {
+        this.activePlaybackTempo = change.bpm;
+        transport.bpm.setValueAtTime(change.bpm * this._tempoScale, time);
+      }, `${change.timestampBeats * ppq}i`);
+      this.scheduledEvents.push(tempoId);
+    }
 
     for (const event of events) {
       const filteredNotes = staffFilter
@@ -116,13 +150,11 @@ export class AudioEngine {
 
       if (filteredNotes.length === 0) continue;
 
-      const timeInSeconds = event.timestamp / this._tempoScale;
-
       const eventId = transport.schedule((time) => {
         for (const note of filteredNotes) {
           if (this.sampler) {
             const name = midiToNoteName(note.midi);
-            const dur = note.duration / this._tempoScale;
+            const dur = `${Math.max(1, note.durationBeats * ppq)}i`;
             this.sampler.triggerAttackRelease(name, dur, time, note.velocity);
           }
         }
@@ -130,7 +162,7 @@ export class AudioEngine {
         Tone.getDraw().schedule(() => {
           this.cursorCallback?.(event.index);
         }, time);
-      }, timeInSeconds);
+      }, `${event.timestampBeats * ppq}i`);
 
       this.scheduledEvents.push(eventId);
     }
@@ -138,37 +170,34 @@ export class AudioEngine {
     // Schedule completion
     if (events.length > 0) {
       const lastEvent = events[events.length - 1];
-      const maxDur = lastEvent.notes.length > 0
-        ? Math.max(...lastEvent.notes.map(n => n.duration))
-        : 0.5;
-      const endTime = (lastEvent.timestamp + maxDur) / this._tempoScale + 0.5;
+      const maxDurationBeats = lastEvent.notes.length > 0
+        ? Math.max(...lastEvent.notes.map(note => note.durationBeats))
+        : 1;
+      const endTicks = (lastEvent.timestampBeats + maxDurationBeats + 0.25) * ppq;
 
       const endId = transport.schedule(() => {
         Tone.getDraw().schedule(() => {
           this.completionCallback?.();
         }, Tone.now());
-      }, endTime);
+      }, `${endTicks}i`);
       this.scheduledEvents.push(endId);
     }
   }
 
-  async countIn(beats: number = 4, onBeat?: (beat: number) => void): Promise<void> {
-    if (!this.metronomeSynth || !this.isReady) return;
-    this.countInCancelled = false;
+  async countIn(beats: number = 4, onBeat?: (beat: number) => void): Promise<boolean> {
+    if (!this.metronomeSynth || !this.isReady) return true;
+    this.cancelCountIn();
+    const generation = this.countInGeneration;
     const interval = 60 / (this._tempo * this._tempoScale);
 
     for (let i = 0; i < beats; i++) {
-      if (this.countInCancelled) return;
+      if (generation !== this.countInGeneration) return false;
       const freq = i === 0 ? 1200 : 900;
       this.metronomeSynth.triggerAttackRelease(freq, '16n');
       onBeat?.(i + 1);
-      if (i < beats - 1) {
-        await new Promise(resolve => setTimeout(resolve, interval * 1000));
-      }
+      if (!await this.waitForCountInBeat(interval * 1000, generation)) return false;
     }
-    if (this.countInCancelled) return;
-    // Small pause after last beat before starting
-    await new Promise(resolve => setTimeout(resolve, interval * 1000));
+    return generation === this.countInGeneration;
   }
 
   play(): void {
@@ -184,9 +213,32 @@ export class AudioEngine {
   }
 
   stop(): void {
-    this.countInCancelled = true;
+    this.cancelCountIn();
     Tone.getTransport().stop();
+    this.sampler?.releaseAll();
     this.clearSchedule();
+  }
+
+  cancelCountIn(): void {
+    this.countInGeneration++;
+    if (this.countInDelay) {
+      clearTimeout(this.countInDelay.timerId);
+      const { resolve } = this.countInDelay;
+      this.countInDelay = null;
+      resolve(false);
+    }
+  }
+
+  private waitForCountInBeat(milliseconds: number, generation: number): Promise<boolean> {
+    return new Promise(resolve => {
+      const timerId = setTimeout(() => {
+        if (this.countInDelay?.timerId === timerId) {
+          this.countInDelay = null;
+        }
+        resolve(generation === this.countInGeneration);
+      }, milliseconds);
+      this.countInDelay = { timerId, resolve };
+    });
   }
 
   private clearSchedule(): void {
@@ -196,11 +248,16 @@ export class AudioEngine {
     }
     this.scheduledEvents = [];
     transport.cancel();
+    Tone.getDraw().cancel();
+    this.cursorCallback = null;
+    this.completionCallback = null;
   }
 
   setTempo(bpm: number): void {
-    this._tempo = bpm;
-    Tone.getTransport().bpm.value = bpm * this._tempoScale;
+    if (!Number.isFinite(bpm)) return;
+    this._tempo = Math.max(1, bpm);
+    this.activePlaybackTempo = this._tempo;
+    Tone.getTransport().bpm.value = this._tempo * this._tempoScale;
     if (this.metronomeEnabled) this.startMetronome();
   }
 
@@ -209,8 +266,9 @@ export class AudioEngine {
   }
 
   setTempoScale(scale: number): void {
+    if (!Number.isFinite(scale)) return;
     this._tempoScale = Math.max(0.25, Math.min(2.0, scale));
-    Tone.getTransport().bpm.value = this._tempo * this._tempoScale;
+    Tone.getTransport().bpm.value = this.activePlaybackTempo * this._tempoScale;
     if (this.metronomeEnabled) this.startMetronome();
   }
 
@@ -253,6 +311,7 @@ export class AudioEngine {
   }
 
   destroy(): void {
+    this.lifecycleGeneration++;
     this.stop();
     this.stopMetronome();
     this.sampler?.dispose();
@@ -260,5 +319,6 @@ export class AudioEngine {
     this.sampler = null;
     this.metronomeSynth = null;
     this.isReady = false;
+    this.initPromise = null;
   }
 }

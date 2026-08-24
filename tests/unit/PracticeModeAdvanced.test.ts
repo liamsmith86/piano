@@ -274,6 +274,26 @@ describe('PracticeMode - empty timeline guard', () => {
     await pm.start();
     expect(pm.isActive()).toBe(false);
   });
+
+  it('deactivates cleanly when switching to a hand with no notes', async () => {
+    const timeline = makeTimeline([{ midis: [60], staff: 1 }]);
+    const im = new InputManager();
+    const keyboard = createMockKeyboard();
+    const events = new EventEmitter();
+    const stateChanges: boolean[] = [];
+    events.on('practiceStateChanged', ({ active }) => stateChanges.push(active));
+    const pm = new PracticeMode(
+      createMockAudio(), createMockRenderer(),
+      createMockAnalyzer(timeline), im, keyboard, events,
+    );
+
+    await pm.start();
+    pm.setHand('left');
+
+    expect(pm.isActive()).toBe(false);
+    expect(pm.getExpectedNotes()).toEqual([]);
+    expect(stateChanges).toEqual([true, false]);
+  });
 });
 
 describe('PracticeMode - wrong note marker', () => {
@@ -312,5 +332,22 @@ describe('PracticeMode - stop clears everything', () => {
     const lastCall = keyboard.highlightKeys.mock.calls.at(-1);
     expect(lastCall?.[0]).toEqual([]);
     expect(pm.isActive()).toBe(false);
+  });
+
+  it('emits lifecycle state changes when practice starts and stops', async () => {
+    const events = new EventEmitter();
+    const changes: boolean[] = [];
+    events.on('practiceStateChanged', ({ active }) => changes.push(active));
+    const pm = new PracticeMode(
+      createMockAudio(), createMockRenderer(),
+      createMockAnalyzer(makeTimeline([{ midis: [60] }])),
+      new InputManager(), createMockKeyboard(), events,
+    );
+
+    await pm.start();
+    pm.stop();
+    pm.stop();
+
+    expect(changes).toEqual([true, false]);
   });
 });

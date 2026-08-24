@@ -1,19 +1,14 @@
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
-import type { NoteEvent, NoteInfo } from '../types';
+import type { NoteEvent, NoteInfo, TempoChange } from '../types';
 import { midiToNoteName } from '../types';
 import { buildPracticeStaffMap, getPracticeHand } from './PracticePart';
-
-interface TempoPoint {
-  timestamp: number;
-  bpm: number;
-}
 
 const DEFAULT_TEMPO = 120;
 
 export class ScoreAnalyzer {
   private timeline: NoteEvent[] = [];
-  private tempoMap: TempoPoint[] = [];
-  private sourceTempoMap: TempoPoint[] = [];
+  private tempoMap: TempoChange[] = [];
+  private sourceTempoMap: TempoChange[] = [];
   private defaultTempo = DEFAULT_TEMPO;
 
   analyze(osmd: OpenSheetMusicDisplay): NoteEvent[] {
@@ -38,7 +33,7 @@ export class ScoreAnalyzer {
       ?? this.tempoAtSourceBeat(0);
 
     this.defaultTempo = activeBpm;
-    this.tempoMap.push({ timestamp: 0, bpm: activeBpm });
+    this.tempoMap.push({ timestampBeats: 0, bpm: activeBpm });
 
     while (!cursor.Iterator.EndReached) {
       const notes: NoteInfo[] = [];
@@ -64,7 +59,7 @@ export class ScoreAnalyzer {
         ?? this.tempoAtSourceBeat(sourceBeats);
       if (eventBpm !== activeBpm) {
         activeBpm = eventBpm;
-        this.tempoMap.push({ timestamp: timestampBeats, bpm: activeBpm });
+        this.tempoMap.push({ timestampBeats, bpm: activeBpm });
       }
 
       previousSourceBeats = sourceBeats;
@@ -162,7 +157,7 @@ export class ScoreAnalyzer {
       if (sourceMeasure.TempoInBPM > 0 &&
           (this.sourceTempoMap.length === 0 || this.sourceTempoMap[this.sourceTempoMap.length - 1].bpm !== sourceMeasure.TempoInBPM)) {
         this.sourceTempoMap.push({
-          timestamp: currentBeat,
+          timestampBeats: currentBeat,
           bpm: sourceMeasure.TempoInBPM,
         });
       }
@@ -170,7 +165,7 @@ export class ScoreAnalyzer {
     }
 
     if (this.sourceTempoMap.length === 0) {
-      this.sourceTempoMap.push({ timestamp: 0, bpm: this.defaultTempo });
+      this.sourceTempoMap.push({ timestampBeats: 0, bpm: this.defaultTempo });
     }
   }
 
@@ -182,10 +177,10 @@ export class ScoreAnalyzer {
     let currentBpm = this.tempoAtBeat(startBeat, this.tempoMap);
 
     for (const change of this.tempoMap) {
-      if (change.timestamp <= startBeat) continue;
-      if (change.timestamp >= endBeat) break;
-      seconds += ((change.timestamp - position) / currentBpm) * 60;
-      position = change.timestamp;
+      if (change.timestampBeats <= startBeat) continue;
+      if (change.timestampBeats >= endBeat) break;
+      seconds += ((change.timestampBeats - position) / currentBpm) * 60;
+      position = change.timestampBeats;
       currentBpm = change.bpm;
     }
 
@@ -193,10 +188,10 @@ export class ScoreAnalyzer {
     return seconds;
   }
 
-  private tempoAtBeat(beat: number, tempoMap: TempoPoint[]): number {
+  private tempoAtBeat(beat: number, tempoMap: TempoChange[]): number {
     let bpm = tempoMap[0]?.bpm ?? this.defaultTempo;
     for (const entry of tempoMap) {
-      if (entry.timestamp > beat) break;
+      if (entry.timestampBeats > beat) break;
       bpm = entry.bpm;
     }
     return bpm;
@@ -220,7 +215,7 @@ export class ScoreAnalyzer {
     return this.defaultTempo;
   }
 
-  getTempoMap(): { timestamp: number; bpm: number }[] {
+  getTempoMap(): TempoChange[] {
     return [...this.tempoMap];
   }
 

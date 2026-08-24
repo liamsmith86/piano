@@ -54,6 +54,7 @@ async function main(): Promise<void> {
     app.virtualKeyboard?.setShowNoteNames(settings.showNoteNames);
     app.setAccompaniment(settings.accompaniment);
     app.setAutoAdvance(settings.autoAdvance ? settings.autoAdvanceSeconds * 1000 : 0);
+    app.setWrongNoteLabels(settings.wrongNoteLabels);
     updateKeyboardVisibility();
     app.updateOverlays({
       showNoteNamesOnScore: settings.showNoteNamesOnScore,
@@ -81,12 +82,7 @@ async function main(): Promise<void> {
     // Always unlock AudioContext first (iOS Safari needs this on each user gesture path)
     await app.audio.unlockAudio();
     if (!app.audio.ready) {
-      try {
-        await app.init();
-      } catch (err) {
-        console.warn('Audio init failed, retrying:', err);
-        await app.init();
-      }
+      await app.init();
     }
   };
 
@@ -99,8 +95,12 @@ async function main(): Promise<void> {
       await ensureAudio();
       const settings = settingsPanel.getSettings();
       if (app.audio.ready && settings.countIn) {
-        await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+        const completed = await app.audio.countIn(
+          settings.countInBeats,
+          beat => countIn.show(beat, settings.countInBeats),
+        );
         countIn.hide();
+        if (!completed) return;
       }
       await app.play();
     } catch (err) {
@@ -118,11 +118,14 @@ async function main(): Promise<void> {
       await ensureAudio();
       const settings = settingsPanel.getSettings();
       if (app.audio.ready && settings.countIn) {
-        await app.audio.countIn(settings.countInBeats, (beat) => countIn.show(beat, settings.countInBeats));
+        const completed = await app.audio.countIn(
+          settings.countInBeats,
+          beat => countIn.show(beat, settings.countInBeats),
+        );
         countIn.hide();
+        if (!completed) return;
       }
       await app.startPractice();
-      scoreContainer.classList.add('practice-active');
       updateNoteDisplay();
       updateKeyboardVisibility();
     } catch (err) {
@@ -239,6 +242,12 @@ async function main(): Promise<void> {
     }
   });
 
+  app.on('practiceStateChanged', ({ active }) => {
+    scoreContainer.classList.toggle('practice-active', active);
+    updateNoteDisplay();
+    updateKeyboardVisibility();
+  });
+
   app.on('songEnd', ({ stats }) => {
     noteDisplay.hide();
     scoreContainer.classList.remove('practice-active');
@@ -270,6 +279,11 @@ async function main(): Promise<void> {
   // iOS Safari requires Tone.start() to be called in the synchronous part of a
   // user gesture handler. We call it immediately, then do the rest of init async.
   let audioInitStarted = false;
+  const addAudioInitListeners = () => {
+    document.addEventListener('click', initAudio);
+    document.addEventListener('keydown', initAudio);
+    document.addEventListener('touchstart', initAudio);
+  };
   const initAudio = () => {
     if (audioInitStarted) return;
     audioInitStarted = true;
@@ -281,15 +295,20 @@ async function main(): Promise<void> {
     // Then do the full async init
     app.init().catch((err) => {
       audioInitStarted = false; // allow retry on failure
+      addAudioInitListeners();
       console.warn('Audio init deferred:', err);
     });
   };
-  document.addEventListener('click', initAudio);
-  document.addEventListener('keydown', initAudio);
-  document.addEventListener('touchstart', initAudio);
+  addAudioInitListeners();
 
   // Override toolbar play button to use count-in
   toolbar.setOnPlay(async () => {
+    if (isStarting) {
+      app.stop();
+      countIn.hide();
+      return;
+    }
+
     const mode = app.getMode();
     if (mode === 'play') {
       const state = app.getPlaybackState();
@@ -317,6 +336,11 @@ async function main(): Promise<void> {
     switch (e.key) {
       case ' ':
         e.preventDefault();
+        if (isStarting) {
+          app.stop();
+          countIn.hide();
+          break;
+        }
         if (app.getMode() === 'play') {
           const state = app.getPlaybackState();
           if (state === 'playing') app.pause();
