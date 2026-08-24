@@ -1,5 +1,6 @@
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { NoteEvent } from '../types';
+import { buildPracticeStaffMap, getPracticeHand, type PracticeStaffMap } from './PracticePart';
 
 // Map OSMD NoteEnum values to letter names
 const NOTE_ENUM_NAMES: Record<number, string> = {
@@ -129,6 +130,7 @@ export class ScoreOverlay {
     // Find ALL OSMD SVG pages (OSMD creates one SVG per page for multi-page scores)
     const allSvgs = this.container.querySelectorAll('svg[id^="osmdSvgPage"]');
     if (allSvgs.length === 0) return;
+    const practiceStaffHands = buildPracticeStaffMap(osmd);
 
     // Create one overlay group per SVG page — we'll add notes to the right page's group
     const svgGroups = new Map<SVGSVGElement, SVGGElement>();
@@ -183,7 +185,9 @@ export class ScoreOverlay {
               } catch { /* continue */ }
               if (!noteGroup) noteGroup = svgGroups.values().next().value ?? null;
               if (noteGroup) {
-                this.renderNoteOverlays(gNote, noteGroup, fingerLookup, keyMap, measureIdx);
+                this.renderNoteOverlays(
+                  gNote, noteGroup, fingerLookup, keyMap, measureIdx, practiceStaffHands,
+                );
               }
             }
           }
@@ -212,9 +216,12 @@ export class ScoreOverlay {
     fingerLookup: Map<string, number>,
     keyMap: Map<number, any> | null,
     measureIdx: number,
+    practiceStaffHands: PracticeStaffMap,
   ): void {
     const sourceNote = gNote.sourceNote;
     if (!sourceNote || sourceNote.isRest?.()) return;
+    const staff = getPracticeHand(sourceNote, practiceStaffHands);
+    if (!staff) return;
 
     const pitch = sourceNote.Pitch;
     if (!pitch) return;
@@ -241,9 +248,6 @@ export class ScoreOverlay {
 
     const cx = nhBox.x + nhBox.width / 2;
     const cy = nhBox.y + nhBox.height / 2;
-    const staffId = sourceNote.ParentStaffEntry?.ParentStaff?.idInMusicSheet ?? 0;
-    const staff = staffId === 0 ? 1 : 2;
-
     const nhH = nhBox.height;
     const nhW = nhBox.width;
 

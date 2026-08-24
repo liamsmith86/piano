@@ -2,6 +2,7 @@ import { OpenSheetMusicDisplay, Cursor } from 'opensheetmusicdisplay';
 import type { IOSMDOptions } from 'opensheetmusicdisplay';
 import type { HandSelection } from '../types';
 import { ScoreOverlay } from './ScoreOverlay';
+import { buildPracticeStaffMap, getPracticeHand, type PracticeStaffMap } from './PracticePart';
 
 export class ScoreRenderer {
   private osmd: OpenSheetMusicDisplay | null = null;
@@ -11,6 +12,7 @@ export class ScoreRenderer {
   private wrongNoteOverlay: SVGGElement | null = null;
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private overlay: ScoreOverlay;
+  private practiceStaffHands: PracticeStaffMap = new Map();
   private _zoom: number = window.innerWidth <= 640 ? 0.75 : 1.5;
 
   constructor(container: HTMLElement) {
@@ -74,6 +76,7 @@ export class ScoreRenderer {
 
     this.osmd.zoom = this._zoom;
     this.osmd.render();
+    this.practiceStaffHands = buildPracticeStaffMap(this.osmd);
     this.setupCursor();
     this.setupWrongNoteOverlay();
     this.applyHandColoring();
@@ -120,6 +123,13 @@ export class ScoreRenderer {
     return colored;
   }
 
+  private isGraphicalNoteSelected(graphicalNote: any): boolean {
+    const hand = getPracticeHand(graphicalNote.sourceNote ?? {}, this.practiceStaffHands);
+    if (!hand) return false;
+    if (this.currentHand === 'both') return true;
+    return hand === (this.currentHand === 'right' ? 1 : 2);
+  }
+
   /** Color the noteheads at the current cursor position */
   highlightCurrentNotes(color: string): void {
     // Restore previous highlight to original (or green if played)
@@ -143,6 +153,7 @@ export class ScoreRenderer {
     if (!gnotes) return;
 
     for (const gn of gnotes) {
+      if (!this.isGraphicalNoteSelected(gn)) continue;
       try {
         const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
         if (svgEl) {
@@ -169,6 +180,7 @@ export class ScoreRenderer {
     if (!gnotes) return;
 
     for (const gn of gnotes) {
+      if (!this.isGraphicalNoteSelected(gn)) continue;
       try {
         const svgEl = gn.getSVGGElement?.() as SVGGElement | null;
         if (svgEl) {
@@ -369,6 +381,7 @@ export class ScoreRenderer {
     let closestMidi = 0;
 
     for (const gn of gnotes) {
+      if (!this.isGraphicalNoteSelected(gn)) continue;
       try {
         const halfTone = gn.sourceNote?.halfTone;
         if (halfTone == null || gn.sourceNote?.isRest?.()) continue;
@@ -557,5 +570,6 @@ export class ScoreRenderer {
     this.osmd?.clear();
     this.osmd = null;
     this.cursor = null;
+    this.practiceStaffHands = new Map();
   }
 }

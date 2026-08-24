@@ -1,42 +1,74 @@
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { NoteEvent, NoteInfo } from '../types';
 import { midiToNoteName } from '../types';
+import { buildPracticeStaffMap, getPracticeHand } from './PracticePart';
+
+interface TempoPoint {
+  timestamp: number;
+  bpm: number;
+}
+
+const DEFAULT_TEMPO = 120;
 
 export class ScoreAnalyzer {
   private timeline: NoteEvent[] = [];
-  private tempoMap: { timestamp: number; bpm: number }[] = [];
-  private defaultTempo = 120;
+  private tempoMap: TempoPoint[] = [];
+  private sourceTempoMap: TempoPoint[] = [];
+  private defaultTempo = DEFAULT_TEMPO;
 
   analyze(osmd: OpenSheetMusicDisplay): NoteEvent[] {
     this.timeline = [];
     this.tempoMap = [];
+    this.sourceTempoMap = [];
+    this.defaultTempo = DEFAULT_TEMPO;
     this.extractTempo(osmd);
 
     const cursor = osmd.cursors[0];
     if (!cursor) return [];
 
+    const practiceStaffHands = buildPracticeStaffMap(osmd);
+
     cursor.reset();
     let cursorStep = 0; // counts ALL cursor positions (including rests)
+    let previousSourceBeats = 0;
+    let previousEnrolledBeats = 0;
+    let fallbackRepeatOffset = 0;
+    let elapsedSeconds = 0;
+    let activeBpm = this.validTempo(cursor.Iterator.CurrentBpm)
+      ?? this.tempoAtSourceBeat(0);
 
-    // Track cumulative time to handle repeats (where beat position jumps backwards)
-    let prevRawBeats = 0;
-    let cumulativeBeatsOffset = 0;
+    this.defaultTempo = activeBpm;
+    this.tempoMap.push({ timestamp: 0, bpm: activeBpm });
 
     while (!cursor.Iterator.EndReached) {
       const notes: NoteInfo[] = [];
       const iterator = cursor.Iterator;
-      const rawBeats = iterator.currentTimeStamp.RealValue * 4;
+      const sourceBeats = iterator.currentTimeStamp.RealValue * 4;
       const measureNumber = iterator.CurrentMeasureIndex + 1;
 
-      // Detect repeat jump: if raw beats go backwards, bridge the gap
-      // by adding only the difference (not the full absolute position)
-      if (rawBeats < prevRawBeats - 0.01) {
-        cumulativeBeatsOffset += (prevRawBeats - rawBeats);
+      // CurrentEnrolledTimestamp is OSMD's unfolded playback position and
+      // already accounts for repeats. The fallback supports lightweight test
+      // doubles and older OSMD structures that only expose source timestamps.
+      if (sourceBeats < previousSourceBeats - 0.01) {
+        fallbackRepeatOffset += previousSourceBeats - sourceBeats;
       }
-      prevRawBeats = rawBeats;
+      const enrolledTimestamp = iterator.CurrentEnrolledTimestamp?.RealValue;
+      const timestampBeats = Number.isFinite(enrolledTimestamp)
+        ? enrolledTimestamp * 4
+        : sourceBeats + fallbackRepeatOffset;
 
-      const timestampBeats = rawBeats + cumulativeBeatsOffset;
-      const timestamp = this.beatsToSeconds(timestampBeats);
+      const beatDelta = Math.max(0, timestampBeats - previousEnrolledBeats);
+      elapsedSeconds += (beatDelta / activeBpm) * 60;
+
+      const eventBpm = this.validTempo(iterator.CurrentBpm)
+        ?? this.tempoAtSourceBeat(sourceBeats);
+      if (eventBpm !== activeBpm) {
+        activeBpm = eventBpm;
+        this.tempoMap.push({ timestamp: timestampBeats, bpm: activeBpm });
+      }
+
+      previousSourceBeats = sourceBeats;
+      previousEnrolledBeats = timestampBeats;
 
       // Get current voice entries at this cursor position
       const entries = iterator.CurrentVoiceEntries;
@@ -45,27 +77,29 @@ export class ScoreAnalyzer {
           for (const note of voiceEntry.Notes) {
             if (note.isRest()) continue;
 
+            const staff = getPracticeHand(note, practiceStaffHands);
+            if (!staff) continue;
+
             const halfTone = note.halfTone;
             // OSMD halfTone is semitones from C0, add 12 to get MIDI
             const midiNumber = halfTone + 12;
 
-            const staffEntry = note.ParentStaffEntry;
-            const staffId = staffEntry?.ParentStaff?.idInMusicSheet ?? 0;
-            const staff = (staffId === 0 ? 1 : 2) as 1 | 2;
-
-            const durationBeats = note.Length.RealValue * 4;
-            const duration = this.durationAtBeat(durationBeats, timestampBeats);
+            const isTiedContinuation = note.NoteTie !== undefined && note.NoteTie !== null
+              && note.NoteTie.StartNote !== note;
+            const durationBeats = note.NoteTie && !isTiedContinuation
+              ? note.NoteTie.Duration.RealValue * 4
+              : note.Length.RealValue * 4;
 
             const noteInfo: NoteInfo = {
               midi: midiNumber,
               name: midiToNoteName(midiNumber),
-              duration,
+              // Filled from the complete unfolded tempo map after iteration.
+              duration: 0,
               durationBeats,
               velocity: 0.8,
               staff,
               voice: voiceEntry.ParentVoice?.VoiceId ?? 1,
-              tied: note.NoteTie !== undefined && note.NoteTie !== null &&
-                    note.NoteTie.StartNote !== note,
+              tied: isTiedContinuation,
             };
 
             // Skip notes that are tied continuations (not the start of the tie)
@@ -79,7 +113,7 @@ export class ScoreAnalyzer {
       if (notes.length > 0) {
         this.timeline.push({
           index: cursorStep, // use absolute cursor position for cursor sync
-          timestamp,
+          timestamp: elapsedSeconds,
           timestampBeats,
           notes,
           measureNumber,
@@ -92,6 +126,17 @@ export class ScoreAnalyzer {
 
     // Reset cursor after analysis
     cursor.reset();
+
+    // Tempo changes later in the piece are only known after cursor traversal.
+    // Compute durations now so notes spanning a tempo change remain accurate.
+    for (const event of this.timeline) {
+      for (const note of event.notes) {
+        note.duration = this.secondsBetweenBeats(
+          event.timestampBeats,
+          event.timestampBeats + note.durationBeats,
+        );
+      }
+    }
     return this.timeline;
   }
 
@@ -110,12 +155,13 @@ export class ScoreAnalyzer {
       }
     }
 
-    // Build tempo map from all measures (only when BPM actually changes)
+    // Build a source-score tempo map as a fallback for test doubles and OSMD
+    // documents whose iterator does not expose CurrentBpm.
     let currentBeat = 0;
     for (const sourceMeasure of sheet.SourceMeasures) {
       if (sourceMeasure.TempoInBPM > 0 &&
-          (this.tempoMap.length === 0 || this.tempoMap[this.tempoMap.length - 1].bpm !== sourceMeasure.TempoInBPM)) {
-        this.tempoMap.push({
+          (this.sourceTempoMap.length === 0 || this.sourceTempoMap[this.sourceTempoMap.length - 1].bpm !== sourceMeasure.TempoInBPM)) {
+        this.sourceTempoMap.push({
           timestamp: currentBeat,
           bpm: sourceMeasure.TempoInBPM,
         });
@@ -123,44 +169,47 @@ export class ScoreAnalyzer {
       currentBeat += sourceMeasure.Duration.RealValue * 4;
     }
 
-    if (this.tempoMap.length === 0) {
-      this.tempoMap.push({ timestamp: 0, bpm: this.defaultTempo });
+    if (this.sourceTempoMap.length === 0) {
+      this.sourceTempoMap.push({ timestamp: 0, bpm: this.defaultTempo });
     }
   }
 
-  private beatsToSeconds(beats: number): number {
-    // Simple conversion using the primary tempo
-    // For multi-tempo pieces, this would need to integrate the tempo map
+  private secondsBetweenBeats(startBeat: number, endBeat: number): number {
+    if (endBeat <= startBeat) return 0;
+
     let seconds = 0;
-    let remainingBeats = beats;
-    let currentBpm = this.tempoMap[0]?.bpm ?? this.defaultTempo;
-    let lastBeatMark = 0;
+    let position = startBeat;
+    let currentBpm = this.tempoAtBeat(startBeat, this.tempoMap);
 
-    for (let i = 1; i < this.tempoMap.length; i++) {
-      const nextChange = this.tempoMap[i].timestamp;
-      if (nextChange >= beats) break;
-
-      const segmentBeats = nextChange - lastBeatMark;
-      if (segmentBeats > 0) {
-        seconds += (segmentBeats / currentBpm) * 60;
-        remainingBeats -= segmentBeats;
-      }
-      currentBpm = this.tempoMap[i].bpm;
-      lastBeatMark = nextChange;
+    for (const change of this.tempoMap) {
+      if (change.timestamp <= startBeat) continue;
+      if (change.timestamp >= endBeat) break;
+      seconds += ((change.timestamp - position) / currentBpm) * 60;
+      position = change.timestamp;
+      currentBpm = change.bpm;
     }
 
-    seconds += (remainingBeats / currentBpm) * 60;
+    seconds += ((endBeat - position) / currentBpm) * 60;
     return seconds;
   }
 
-  /** Convert a duration in beats to seconds using the tempo active at a specific beat position */
-  private durationAtBeat(durationBeats: number, atBeat: number): number {
-    let currentBpm = this.tempoMap[0]?.bpm ?? this.defaultTempo;
-    for (const entry of this.tempoMap) {
-      if (entry.timestamp > atBeat) break;
-      currentBpm = entry.bpm;
+  private tempoAtBeat(beat: number, tempoMap: TempoPoint[]): number {
+    let bpm = tempoMap[0]?.bpm ?? this.defaultTempo;
+    for (const entry of tempoMap) {
+      if (entry.timestamp > beat) break;
+      bpm = entry.bpm;
     }
-    return (durationBeats / currentBpm) * 60;
+    return bpm;
+  }
+
+  private tempoAtSourceBeat(beat: number): number {
+    return this.tempoAtBeat(beat, this.sourceTempoMap);
+  }
+
+  private validTempo(value: number | undefined): number | null {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? value
+      : null;
   }
 
   getTimeline(): NoteEvent[] {
@@ -184,7 +233,7 @@ export class ScoreAnalyzer {
   }
 
   getEventAtIndex(index: number): NoteEvent | null {
-    return this.timeline[index] ?? null;
+    return this.timeline.find(event => event.index === index) ?? null;
   }
 
   filterByHand(hand: 'both' | 'left' | 'right'): NoteEvent[] {

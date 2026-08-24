@@ -308,8 +308,8 @@ describe('ScoreAnalyzer', () => {
       sheet: {
         HasBPMInfo: true,
         SourceMeasures: [
-          { TempoInBPM: 60, Duration: { RealValue: 1 } },   // Measure 1: 60 BPM
-          { TempoInBPM: 120, Duration: { RealValue: 1 } },  // Measure 2: 120 BPM
+          { TempoInBPM: 60, Duration: { RealValue: 0.25 } },   // Measure 1: 1 beat at 60 BPM
+          { TempoInBPM: 120, Duration: { RealValue: 0.25 } },  // Measure 2: 1 beat at 120 BPM
         ],
       },
     } as any;
@@ -386,5 +386,184 @@ describe('ScoreAnalyzer', () => {
     analyzer.analyze(osmd);
     // Should not throw
     expect(analyzer.getTotalDuration()).toBeGreaterThan(0);
+  });
+
+  it('resets the default tempo when the next score has no tempo metadata', () => {
+    const analyzer = new ScoreAnalyzer();
+    const first = createMockOSMD([
+      [{ midi: 60, staff: 1, beats: 1, measure: 0 }],
+    ]) as any;
+    first.sheet.SourceMeasures[0].TempoInBPM = 72;
+
+    const second = createMockOSMD([
+      [{ midi: 64, staff: 1, beats: 1, measure: 0 }],
+    ]) as any;
+    second.sheet.HasBPMInfo = false;
+    second.sheet.SourceMeasures[0].TempoInBPM = 0;
+
+    analyzer.analyze(first);
+    expect(analyzer.getDefaultTempo()).toBe(72);
+
+    analyzer.analyze(second);
+    expect(analyzer.getDefaultTempo()).toBe(120);
+    expect(analyzer.getTimeline()[0].notes[0].duration).toBeCloseTo(0.5);
+  });
+
+  it('uses OSMD enrolled timestamps to preserve the full duration of repeats', () => {
+    let cursorPos = 0;
+    const positions = [
+      { source: 0, enrolled: 0, measure: 0 },
+      { source: 1, enrolled: 1, measure: 0 },
+      { source: 0, enrolled: 4, measure: 0 },
+    ];
+    const staff = { idInMusicSheet: 0 };
+    const mockOsmd = {
+      cursors: [{
+        reset: () => { cursorPos = 0; },
+        next: () => { cursorPos++; },
+        Iterator: {
+          get EndReached() { return cursorPos >= positions.length; },
+          get currentTimeStamp() { return { RealValue: positions[cursorPos].source / 4 }; },
+          get CurrentEnrolledTimestamp() { return { RealValue: positions[cursorPos].enrolled / 4 }; },
+          get CurrentBpm() { return 60; },
+          get CurrentMeasureIndex() { return positions[cursorPos].measure; },
+          get CurrentVoiceEntries() {
+            return [{
+              Notes: [{
+                isRest: () => false,
+                halfTone: 48,
+                Length: { RealValue: 0.25 },
+                ParentStaffEntry: { ParentStaff: staff },
+                NoteTie: undefined,
+              }],
+              ParentVoice: { VoiceId: 1 },
+            }];
+          },
+        },
+      }],
+      sheet: {
+        HasBPMInfo: true,
+        SourceMeasures: [{ TempoInBPM: 60, Duration: { RealValue: 1 } }],
+        Instruments: [{ Name: 'Piano', Staves: [staff] }],
+      },
+    } as any;
+
+    const analyzer = new ScoreAnalyzer();
+    const timeline = analyzer.analyze(mockOsmd);
+
+    expect(timeline.map(event => event.timestampBeats)).toEqual([0, 1, 4]);
+    expect(timeline.map(event => event.timestamp)).toEqual([0, 1, 4]);
+  });
+
+  it('analyzes the piano grand staff and ignores a preceding vocal part', () => {
+    let cursorPos = 0;
+    const vocalStaff = { idInMusicSheet: 0 };
+    const trebleStaff = { idInMusicSheet: 1 };
+    const bassStaff = { idInMusicSheet: 2 };
+    const notes = [
+      { midi: 72, staff: vocalStaff },
+      { midi: 64, staff: trebleStaff },
+      { midi: 40, staff: bassStaff },
+    ];
+    const mockOsmd = {
+      cursors: [{
+        reset: () => { cursorPos = 0; },
+        next: () => { cursorPos++; },
+        Iterator: {
+          get EndReached() { return cursorPos >= 1; },
+          get currentTimeStamp() { return { RealValue: 0 }; },
+          get CurrentEnrolledTimestamp() { return { RealValue: 0 }; },
+          get CurrentBpm() { return 120; },
+          get CurrentMeasureIndex() { return 0; },
+          get CurrentVoiceEntries() {
+            return notes.map(note => ({
+              Notes: [{
+                isRest: () => false,
+                halfTone: note.midi - 12,
+                Length: { RealValue: 0.25 },
+                ParentStaffEntry: { ParentStaff: note.staff },
+                NoteTie: undefined,
+              }],
+              ParentVoice: { VoiceId: 1 },
+            }));
+          },
+        },
+      }],
+      sheet: {
+        HasBPMInfo: true,
+        SourceMeasures: [{ TempoInBPM: 120, Duration: { RealValue: 1 } }],
+        Instruments: [
+          { Name: 'Voice', Staves: [vocalStaff] },
+          { Name: 'Grand Piano', Staves: [trebleStaff, bassStaff] },
+        ],
+      },
+    } as any;
+
+    const analyzer = new ScoreAnalyzer();
+    const [event] = analyzer.analyze(mockOsmd);
+
+    expect(event.notes.map(note => note.midi)).toEqual([64, 40]);
+    expect(event.notes.map(note => note.staff)).toEqual([1, 2]);
+  });
+
+  it('uses the full tie duration for a tie start and skips its continuation', () => {
+    let cursorPos = 0;
+    const staff = { idInMusicSheet: 0 };
+    const startNote: any = {
+      isRest: () => false,
+      halfTone: 48,
+      Length: { RealValue: 0.25 },
+      ParentStaffEntry: { ParentStaff: staff },
+    };
+    const continuationNote: any = {
+      ...startNote,
+      ParentStaffEntry: { ParentStaff: staff },
+    };
+    const tie = { StartNote: startNote, Duration: { RealValue: 0.5 } };
+    startNote.NoteTie = tie;
+    continuationNote.NoteTie = tie;
+
+    const mockOsmd = {
+      cursors: [{
+        reset: () => { cursorPos = 0; },
+        next: () => { cursorPos++; },
+        Iterator: {
+          get EndReached() { return cursorPos >= 2; },
+          get currentTimeStamp() { return { RealValue: cursorPos * 0.25 }; },
+          get CurrentEnrolledTimestamp() { return { RealValue: cursorPos * 0.25 }; },
+          get CurrentBpm() { return 120; },
+          get CurrentMeasureIndex() { return 0; },
+          get CurrentVoiceEntries() {
+            return [{
+              Notes: [cursorPos === 0 ? startNote : continuationNote],
+              ParentVoice: { VoiceId: 1 },
+            }];
+          },
+        },
+      }],
+      sheet: {
+        HasBPMInfo: true,
+        SourceMeasures: [{ TempoInBPM: 120, Duration: { RealValue: 1 } }],
+        Instruments: [{ Name: 'Piano', Staves: [staff] }],
+      },
+    } as any;
+
+    const analyzer = new ScoreAnalyzer();
+    const timeline = analyzer.analyze(mockOsmd);
+
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0].notes[0].durationBeats).toBe(2);
+    expect(timeline[0].notes[0].duration).toBe(1);
+  });
+
+  it('looks up events by absolute OSMD cursor index', () => {
+    const analyzer = new ScoreAnalyzer();
+    analyzer.analyze(createMockOSMD([
+      [{ midi: 0, staff: 1, beats: 1, measure: 0 }],
+      [{ midi: 60, staff: 1, beats: 1, measure: 0 }],
+    ]));
+
+    expect(analyzer.getEventAtIndex(0)).toBeNull();
+    expect(analyzer.getEventAtIndex(1)?.notes[0].midi).toBe(60);
   });
 });
