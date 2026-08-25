@@ -618,6 +618,52 @@ input:disabled {
   opacity: 0.15;
 }
 
+/* Learning annotations use engraving-style microtypography instead of opaque
+   badges. The paper halo preserves staff and slur readability while keeping
+   the underlying notation visually dominant. */
+.score-overlay .learner-annotation {
+  paint-order: stroke fill;
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  text-rendering: geometricPrecision;
+  user-select: none;
+}
+
+.score-overlay .note-name-label {
+  fill: #1e40af;
+  font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", sans-serif;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.score-overlay .courtesy-accidental {
+  fill: #64748b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 9px;
+  font-weight: 600;
+  stroke-width: 2.2px;
+}
+
+.score-overlay .fingering-label {
+  fill: #0f766e;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.score-overlay .chord-symbol {
+  fill: #78350f;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  stroke-width: 2.4px;
+}
+
 /* ===== Score Selection ===== */
 .score-selection-overlay {
   position: absolute;

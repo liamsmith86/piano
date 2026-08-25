@@ -28,6 +28,7 @@ test.describe('Note Names on Score', () => {
     const labels = page.locator('.score-overlay .note-name-label');
     const count = await labels.count();
     expect(count).toBeGreaterThan(0);
+    await expect(page.locator('.score-overlay .note-name-bg')).toHaveCount(0);
   });
 
   test('toggling off removes note name labels', async ({ page }) => {
@@ -83,8 +84,7 @@ test.describe('Courtesy Accidentals', () => {
   test('toggling on shows accidental labels', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
-    // Load a song likely to have a key signature with sharps/flats
-    await loadSong(page, '/songs/BeetAnGeSample.mxl');
+    await loadSong(page);
 
     await page.evaluate(() => {
       window.pianoApp.updateOverlays({
@@ -95,10 +95,12 @@ test.describe('Courtesy Accidentals', () => {
       });
     });
 
-    // May or may not have courtesy accidentals depending on the key
-    // At minimum, the overlay should be created
-    const overlayExists = await page.locator('.score-overlay').count();
-    expect(overlayExists).toBe(1);
+    const accidentals = page.locator('.score-overlay .courtesy-accidental');
+    expect(await accidentals.count()).toBeGreaterThan(0);
+    expect(await accidentals.allTextContents()).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^\((♯|♭|𝄪|𝄫|♮)\)$/)]),
+    );
+    await expect(page.locator('.score-overlay .courtesy-accidental-bg')).toHaveCount(0);
   });
 });
 
@@ -125,6 +127,7 @@ test.describe('Fingering', () => {
     for (const t of texts) {
       expect(['1', '2', '3', '4', '5']).toContain(t);
     }
+    await expect(page.locator('.score-overlay .fingering-bg')).toHaveCount(0);
   });
 
   test('fingering labels have correct staff data attributes', async ({ page }) => {
@@ -215,6 +218,12 @@ test.describe('Overlay Interaction', () => {
     const fingerings = await page.locator('.score-overlay .fingering-label').count();
     expect(noteNames).toBeGreaterThan(0);
     expect(fingerings).toBeGreaterThan(0);
+
+    // Altered note names already contain their musical accidental, so the
+    // combined view avoids printing a redundant courtesy symbol beside them.
+    const alteredNames = await page.locator('.score-overlay .note-name-label').allTextContents();
+    expect(alteredNames.some((name: string) => /[♯♭𝄪𝄫]/.test(name))).toBe(true);
+    await expect(page.locator('.score-overlay .courtesy-accidental')).toHaveCount(0);
   });
 
   test('practice mode coloring still works with overlays active', async ({ page }) => {

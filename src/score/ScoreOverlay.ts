@@ -6,6 +6,7 @@ import {
   getSourceNoteId,
   type PracticeStaffMap,
 } from './PracticePart';
+import { detectChord } from './ChordAnalyzer';
 
 // Map OSMD NoteEnum values to letter names
 const NOTE_ENUM_NAMES: Record<number, string> = {
@@ -19,6 +20,7 @@ const ACC_NONE = 2;
 const ACC_NATURAL = 3;
 const ACC_DOUBLE_SHARP = 4;
 const ACC_DOUBLE_FLAT = 5;
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 function accidentalSymbol(acc: number): string {
   switch (acc) {
@@ -29,66 +31,6 @@ function accidentalSymbol(acc: number): string {
     case ACC_NATURAL: return '♮';
     default: return '';
   }
-}
-
-// Chord detection from pitch classes
-const CHORD_TYPES: [number[], string][] = [
-  // Triads
-  [[0, 4, 7], 'maj'],
-  [[0, 3, 7], 'm'],
-  [[0, 3, 6], 'dim'],
-  [[0, 4, 8], 'aug'],
-  [[0, 5, 7], 'sus4'],
-  [[0, 2, 7], 'sus2'],
-  // Sevenths
-  [[0, 4, 7, 11], 'maj7'],
-  [[0, 4, 7, 10], '7'],
-  [[0, 3, 7, 10], 'm7'],
-  [[0, 3, 6, 10], 'm7♭5'],
-  [[0, 3, 6, 9], 'dim7'],
-  [[0, 4, 8, 10], 'aug7'],
-  // Sixths
-  [[0, 4, 7, 9], '6'],
-  [[0, 3, 7, 9], 'm6'],
-];
-
-const ROOT_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
-
-function detectChord(midiNotes: number[]): string | null {
-  if (midiNotes.length < 3) return null;
-
-  // Get unique pitch classes sorted
-  const pitchClasses = [...new Set(midiNotes.map(m => m % 12))].sort((a, b) => a - b);
-  if (pitchClasses.length < 3) return null;
-
-  // Try each pitch class as root (to handle inversions)
-  for (const root of pitchClasses) {
-    const intervals = pitchClasses.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
-
-    for (const [pattern, name] of CHORD_TYPES) {
-      if (pattern.length !== intervals.length) continue;
-      if (pattern.every((v, i) => v === intervals[i])) {
-        const suffix = name === 'maj' ? '' : name;
-        return ROOT_NAMES[root] + suffix;
-      }
-    }
-  }
-
-  // Try matching just the triad (ignore extra notes)
-  if (pitchClasses.length > 3) {
-    for (const root of pitchClasses) {
-      const intervals = pitchClasses.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
-      for (const [pattern, name] of CHORD_TYPES) {
-        if (pattern.length > intervals.length) continue;
-        if (pattern.every(v => intervals.includes(v))) {
-          const suffix = name === 'maj' ? '' : name;
-          return ROOT_NAMES[root] + suffix;
-        }
-      }
-    }
-  }
-
-  return null;
 }
 
 export class ScoreOverlay {
@@ -142,8 +84,10 @@ export class ScoreOverlay {
     // Create one overlay group per SVG page — we'll add notes to the right page's group
     const svgGroups = new Map<SVGSVGElement, SVGGElement>();
     for (const svg of allSvgs) {
-      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const group = document.createElementNS(SVG_NAMESPACE, 'g');
       group.setAttribute('class', 'score-overlay');
+      group.setAttribute('aria-hidden', 'true');
+      group.setAttribute('focusable', 'false');
       group.style.pointerEvents = 'none';
       svgGroups.set(svg as SVGSVGElement, group);
     }
@@ -256,52 +200,30 @@ export class ScoreOverlay {
     const cy = nhBox.y + nhBox.height / 2;
     const nhH = nhBox.height;
     const nhW = nhBox.width;
+    const pitchAccidental = pitch.Accidental !== ACC_NONE && pitch.Accidental !== ACC_NATURAL
+      ? accidentalSymbol(pitch.Accidental)
+      : '';
 
-    // Feature 1: Note letter names — with background pill for readability
+    // Note names sit toward the grand-staff centre while fingering sits on the
+    // outside. A restrained paper-coloured halo keeps both readable without
+    // covering staff lines or turning every note into a coloured badge.
     if (this.showNoteNames) {
       const fundamental = pitch.FundamentalNote;
       const letter = NOTE_ENUM_NAMES[fundamental] ?? '?';
-      const acc = pitch.Accidental;
-      const accStr = (acc !== ACC_NONE && acc !== ACC_NATURAL) ? accidentalSymbol(acc) : '';
-      const label = letter + accStr;
-
-      const fontSize = 10;
-      // Position: below notehead for both staves
-      // Fingering goes above, note names go below — no collision
-      const yPos = nhBox.y + nhH + fontSize + 2;
-
-      // Background pill for contrast against staff lines
-      const pillW = label.length > 1 ? fontSize * 1.3 : fontSize * 0.85;
-      const pillH = fontSize * 0.95;
-      const pill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      pill.setAttribute('x', String(cx - pillW / 2));
-      pill.setAttribute('y', String(yPos - pillH + 1));
-      pill.setAttribute('width', String(pillW));
-      pill.setAttribute('height', String(pillH));
-      pill.setAttribute('rx', '2');
-      pill.setAttribute('fill', '#dbeafe');
-      pill.setAttribute('opacity', '0.85');
-      pill.setAttribute('class', 'note-name-bg');
-      pill.setAttribute('data-staff', String(staff));
-      group.appendChild(pill);
-
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', String(cx));
-      text.setAttribute('y', String(yPos - pillH / 2 + 1));
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'central');
-      text.setAttribute('font-size', String(fontSize));
-      text.setAttribute('font-weight', '700');
-      text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
-      text.setAttribute('fill', '#1d4ed8');
-      text.setAttribute('class', 'note-name-label');
-      text.setAttribute('data-staff', String(staff));
-      text.textContent = label;
-      group.appendChild(text);
+      const label = letter + pitchAccidental;
+      const yPos = staff === 1 ? nhBox.y + nhH + 5.5 : nhBox.y - 5.5;
+      this.appendText(group, {
+        text: label,
+        x: cx,
+        y: yPos,
+        className: 'note-name-label learner-annotation',
+        staff,
+      });
     }
 
-    // Feature 2: Courtesy accidentals — to the left of the notehead with background
-    if (this.showAccidentals && keyMap) {
+    // Courtesy accidentals follow engraving convention: a quiet parenthesised
+    // musical glyph to the left, rather than a coloured hashtag-style badge.
+    if (this.showAccidentals && keyMap && (!this.showNoteNames || !pitchAccidental)) {
       const drawnAcc = gNote.DrawnAccidental ?? ACC_NONE;
 
       if (drawnAcc === ACC_NONE || drawnAcc === undefined) {
@@ -343,75 +265,34 @@ export class ScoreOverlay {
           }
 
           if (shouldShow && accSymbol) {
-            const accFontSize = 13;
-            const accX = nhBox.x - nhW * 0.3;
-            const accY = cy;
-
-            // Small background for contrast
-            const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            bg.setAttribute('x', String(accX - accFontSize * 0.9));
-            bg.setAttribute('y', String(accY - accFontSize * 0.45));
-            bg.setAttribute('width', String(accFontSize * 0.85));
-            bg.setAttribute('height', String(accFontSize * 0.85));
-            bg.setAttribute('rx', '1.5');
-            bg.setAttribute('fill', '#f3e8ff');
-            bg.setAttribute('opacity', '0.85');
-            bg.setAttribute('class', 'courtesy-accidental-bg');
-            bg.setAttribute('data-staff', String(staff));
-            group.appendChild(bg);
-
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', String(accX - accFontSize * 0.45));
-            text.setAttribute('y', String(accY));
-            text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('dominant-baseline', 'central');
-            text.setAttribute('font-size', String(accFontSize));
-            text.setAttribute('font-family', 'serif');
-            text.setAttribute('fill', '#7e22ce');
-            text.setAttribute('class', 'courtesy-accidental');
-            text.setAttribute('data-staff', String(staff));
-            text.textContent = accSymbol;
-            group.appendChild(text);
+            this.appendText(group, {
+              text: `(${accSymbol})`,
+              x: nhBox.x - Math.max(2.5, nhW * 0.25),
+              y: cy,
+              className: 'courtesy-accidental learner-annotation',
+              staff,
+              anchor: 'end',
+            });
           }
         }
       }
     }
 
-    // Feature 3: Fingering numbers — above noteheads (both staves), with circled style
+    // Conventional, unboxed fingering numbers stay close to the notehead and
+    // outside the grand staff. The text halo supplies contrast over slurs and
+    // ledger lines without the visual weight of a circle around every number.
     if (this.showFingering) {
       const finger = fingerLookup.get(getSourceNoteId(sourceNote));
 
       if (finger) {
-        const fontSize = 9;
-        const radius = fontSize * 0.6;
-        // Place above noteheads for treble, below for bass
-        const yPos = staff === 1 ? nhBox.y - 10 : nhBox.y + nhH + 12;
-
-        // Circular background
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', String(cx));
-        circle.setAttribute('cy', String(yPos));
-        circle.setAttribute('r', String(radius));
-        circle.setAttribute('fill', '#f0fdf4');
-        circle.setAttribute('stroke', '#16a34a');
-        circle.setAttribute('stroke-width', '0.8');
-        circle.setAttribute('class', 'fingering-bg');
-        circle.setAttribute('data-staff', String(staff));
-        group.appendChild(circle);
-
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', String(cx));
-        text.setAttribute('y', String(yPos));
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('dominant-baseline', 'central');
-        text.setAttribute('font-size', String(fontSize));
-        text.setAttribute('font-weight', '700');
-        text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
-        text.setAttribute('fill', '#15803d');
-        text.setAttribute('class', 'fingering-label');
-        text.setAttribute('data-staff', String(staff));
-        text.textContent = String(finger);
-        group.appendChild(text);
+        const yPos = staff === 1 ? nhBox.y - 6.5 : nhBox.y + nhH + 6.5;
+        this.appendText(group, {
+          text: String(finger),
+          x: cx,
+          y: yPos,
+          className: 'fingering-label learner-annotation',
+          staff,
+        });
       }
     }
   }
@@ -424,11 +305,13 @@ export class ScoreOverlay {
     // Group timeline events by measure and collect all MIDI notes per beat position
     // We only render a chord symbol at positions where there are 3+ unique pitch classes
     const rendered = new Set<string>();
+    let lastRenderedChord: string | null = null;
 
     for (const event of timeline) {
       const allMidis = event.notes.map(n => n.midi);
       const chord = detectChord(allMidis);
       if (!chord) continue;
+      if (chord === lastRenderedChord) continue;
 
       const sourceNoteIds = event.notes
         .map(note => note.sourceNoteId)
@@ -510,36 +393,39 @@ export class ScoreOverlay {
       const staffY = this.getTopStaffY(gMeasure) ?? (entryBox.y - 30);
 
       const cx = entryBox.x + entryBox.width / 2;
-      const fontSize = 11;
       const yPos = staffY - 8; // Above the top staff line
 
-      // Background pill
-      const pillW = chord.length * fontSize * 0.55 + 6;
-      const pillH = fontSize + 2;
-      const pill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      pill.setAttribute('x', String(cx - pillW / 2));
-      pill.setAttribute('y', String(yPos - pillH / 2));
-      pill.setAttribute('width', String(pillW));
-      pill.setAttribute('height', String(pillH));
-      pill.setAttribute('rx', '2');
-      pill.setAttribute('fill', '#fef3c7');
-      pill.setAttribute('opacity', '0.9');
-      pill.setAttribute('class', 'chord-symbol-bg');
-      noteGroup.appendChild(pill);
-
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', String(cx));
-      text.setAttribute('y', String(yPos));
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'central');
-      text.setAttribute('font-size', String(fontSize));
-      text.setAttribute('font-weight', '700');
-      text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
-      text.setAttribute('fill', '#92400e');
-      text.setAttribute('class', 'chord-symbol');
-      text.textContent = chord;
-      noteGroup.appendChild(text);
+      this.appendText(noteGroup, {
+        text: chord,
+        x: cx,
+        y: yPos,
+        className: 'chord-symbol learner-annotation',
+      });
+      lastRenderedChord = chord;
     }
+  }
+
+  private appendText(
+    group: SVGGElement,
+    options: {
+      text: string;
+      x: number;
+      y: number;
+      className: string;
+      staff?: 1 | 2;
+      anchor?: 'start' | 'middle' | 'end';
+    },
+  ): SVGTextElement {
+    const text = document.createElementNS(SVG_NAMESPACE, 'text');
+    text.setAttribute('x', String(options.x));
+    text.setAttribute('y', String(options.y));
+    text.setAttribute('text-anchor', options.anchor ?? 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('class', options.className);
+    if (options.staff) text.setAttribute('data-staff', String(options.staff));
+    text.textContent = options.text;
+    group.appendChild(text);
+    return text;
   }
 
   private getTopStaffY(gMeasure: any): number | null {

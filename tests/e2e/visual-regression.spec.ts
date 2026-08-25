@@ -100,7 +100,7 @@ test.describe('Visual Regression: Overlays', () => {
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('overlay-note-names.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0.002,
     });
   });
 
@@ -121,7 +121,28 @@ test.describe('Visual Regression: Overlays', () => {
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('overlay-fingering.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0.002,
+    });
+  });
+
+  test('courtesy accidentals overlay on score', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+    await loadSong(page);
+
+    await page.evaluate(() => {
+      window.pianoApp.updateOverlays({
+        showNoteNamesOnScore: false,
+        showAllAccidentals: true,
+        showFingering: false,
+        showChords: false,
+      });
+    });
+    await page.waitForTimeout(300);
+
+    const score = page.locator('#score-container');
+    await expect(score).toHaveScreenshot('overlay-courtesy-accidentals.png', {
+      maxDiffPixelRatio: 0.002,
     });
   });
 
@@ -142,7 +163,7 @@ test.describe('Visual Regression: Overlays', () => {
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('overlay-chord-symbols.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0.002,
     });
   });
 
@@ -163,7 +184,7 @@ test.describe('Visual Regression: Overlays', () => {
 
     const score = page.locator('#score-container');
     await expect(score).toHaveScreenshot('overlay-all-combined.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0.002,
     });
   });
 });
