@@ -9,6 +9,7 @@ import { ShortcutsHelp } from './ui/ShortcutsHelp';
 import { AppStatus } from './ui/AppStatus';
 import type { AppSettings } from './ui/Settings';
 import { addSession } from './progress';
+import { createBrowserUsageAnalytics } from './analytics';
 import './style.css';
 
 declare global {
@@ -18,6 +19,7 @@ declare global {
 }
 
 async function main(): Promise<void> {
+  const analytics = createBrowserUsageAnalytics();
   const appEl = document.getElementById('app')!;
   const scoreContainer = document.getElementById('score-container')!;
   const keyboardContainer = document.getElementById('keyboard-container')!;
@@ -284,6 +286,9 @@ async function main(): Promise<void> {
     history.pushState({ view: 'score' }, '');
     // Re-render overlays for newly loaded song
     applySettings(settingsPanel.getSettings());
+
+    const song = app.getLoadedSong();
+    if (song) analytics.trackScoreLoaded(song);
   });
 
   // Browser back button: return to library from score view
@@ -330,6 +335,26 @@ async function main(): Promise<void> {
     scoreContainer.classList.toggle('practice-active', active);
     updateNoteDisplay();
     updateKeyboardVisibility();
+    if (active) {
+      const song = app.getLoadedSong();
+      if (song) {
+        analytics.trackPracticeStarted(song, {
+          hand: app.getHand(),
+          looped: app.getLoopRange() !== null,
+        });
+      }
+    }
+  });
+
+  let previousPlaybackState = app.getPlaybackState();
+  app.on('playbackStateChanged', ({ state }) => {
+    if (state === 'playing' && previousPlaybackState === 'stopped') {
+      const song = app.getLoadedSong();
+      if (song) {
+        analytics.trackPlaybackStarted(song, app.getHand(), app.getLoopRange() !== null);
+      }
+    }
+    previousPlaybackState = state;
   });
 
   app.on('songEnd', ({ stats }) => {
@@ -342,6 +367,10 @@ async function main(): Promise<void> {
       // Save practice session
       const song = app.getLoadedSong();
       if (song) {
+        analytics.trackPracticeCompleted(song, {
+          hand: app.getHand(),
+          looped: app.getLoopRange() !== null,
+        });
         const total = stats.correctCount + stats.wrongCount;
         addSession({
           songId: song.id,

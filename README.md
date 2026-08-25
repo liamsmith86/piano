@@ -36,7 +36,9 @@ Live demo: https://piano.everla.st
 - Measure loop for section practice
 - Practice session history with accuracy badges per song
 
-**18 Preloaded Songs** including Bella Ciao, Runaway, Heat Waves, Young and Beautiful, Roaring Tides, Sparkle (Your Name), and more. Upload your own MXL/MusicXML files.
+**17 bundled scores** are available immediately. You can also open your own
+MXL/MusicXML files; those files stay in your browser and are never uploaded to
+the production server.
 
 ## Quick Start
 
@@ -54,11 +56,31 @@ Vite + TypeScript, OpenSheetMusicDisplay, Tone.js, Web MIDI API, Tailwind CSS
 ## Testing
 
 ```bash
-bun run test        # 179 unit tests
-bun run test:e2e    # 115 E2E tests (includes full playthrough of all 18 songs)
+bun run test        # Unit tests
+bun run test:e2e    # Chromium E2E, full-playthrough, and visual tests
 ```
 
-294 tests total. Every preloaded song is verified note-by-note in automated tests.
+Every bundled score is analyzed and played note-by-note in automated tests.
+
+## Privacy and production analytics
+
+- Imported scores are stored locally in IndexedDB. Their filenames, titles,
+  contents, notes, and MIDI input are never sent to the server or analytics.
+- The ignored `public/songs/personal/` directory is available only to local
+  development. Production builds remove it, and CI refuses to deploy if it is
+  present in `dist/`.
+- Production uses the existing Google Analytics property for coarse events:
+  score loaded, playback started, practice started, and practice completed.
+  Bundled score ids may be included; local scores are reported only as
+  `score_source=local_upload`.
+- Analytics runs only on `piano.everla.st` and respects Do Not Track and Global
+  Privacy Control. Local development and automated tests do not send events.
+
+## Deployment
+
+Pushes to `main` run type checking, unit tests, a production build, the personal
+song exclusion check, deployment to `/opt/piano/dist/`, a Cloudflare cache
+purge, and production smoke checks through GitHub Actions.
 
 ## License
 
