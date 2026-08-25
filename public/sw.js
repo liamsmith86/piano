@@ -50,7 +50,7 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname === SAMPLE_HOST && url.pathname.includes('/audio/salamander/')) {
     event.respondWith(
       caches.open(SAMPLE_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
+        cache.match(event.request, { ignoreVary: true }).then((cached) => {
           if (cached) return cached;
           return fetch(event.request).then((response) => {
             if (response.ok) {
@@ -69,7 +69,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
-        const cached = await cache.match(event.request);
+        // The same immutable asset may be requested first by cache.addAll()
+        // and later as a CORS module script. Ignore response Vary headers so
+        // those equivalent same-URL requests share the precached response.
+        const cached = await cache.match(event.request, { ignoreVary: true });
         if (cached) return cached;
         const response = await fetch(event.request);
         if (response.ok) cache.put(event.request, response.clone()).catch(() => {});
@@ -92,7 +95,9 @@ self.addEventListener('fetch', (event) => {
             }
             return response;
           })
-          .catch(async () => (await cache.match(event.request)) ?? Response.error())
+          .catch(async () => (
+            await cache.match(event.request, { ignoreVary: true })
+          ) ?? Response.error())
       )
     );
     return;
@@ -110,10 +115,11 @@ self.addEventListener('fetch', (event) => {
             return response;
           }
           // Server error (5xx/4xx) — try cached version before returning error
-          return caches.match(event.request).then((cached) => cached || response);
+          return caches.match(event.request, { ignoreVary: true })
+            .then((cached) => cached || response);
         })
         .catch(async () => {
-          const cached = await caches.match(event.request);
+          const cached = await caches.match(event.request, { ignoreVary: true });
           if (cached) return cached;
           if (event.request.mode === 'navigate') {
             return (await caches.match('/index.html')) ?? Response.error();
