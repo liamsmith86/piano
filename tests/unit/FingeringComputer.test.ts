@@ -97,6 +97,17 @@ describe('FingeringComputer', () => {
     }
   });
 
+  it('avoids same-finger hops throughout a connected passage', () => {
+    const fc = new FingeringComputer();
+    const events = singleNoteEvents([60, 65, 62, 67, 64, 71]);
+    fc.compute(events, 'right');
+
+    const fingers = getFingers(events);
+    for (let i = 1; i < fingers.length; i++) {
+      expect(fingers[i]).not.toBe(fingers[i - 1]);
+    }
+  });
+
   it('assigns chord with 3 notes as 1-3-5', () => {
     const fc = new FingeringComputer();
     const chord = [makeNote(60), makeNote(64), makeNote(67)]; // C-E-G

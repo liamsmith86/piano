@@ -252,6 +252,7 @@ export class FingeringComputer {
   ): number {
     let pairCost = 0;
     let pairCount = 0;
+    const allowsHandRelocation = previous.pitches.length > 1 || current.pitches.length > 1;
 
     for (let previousIndex = 0; previousIndex < previous.pitches.length; previousIndex++) {
       for (let currentIndex = 0; currentIndex < current.pitches.length; currentIndex++) {
@@ -261,6 +262,7 @@ export class FingeringComputer {
           current.pitches[currentIndex],
           candidate.fingers[currentIndex],
           hand,
+          allowsHandRelocation,
         );
         pairCount++;
       }
@@ -289,6 +291,7 @@ export class FingeringComputer {
     currentPitch: number,
     currentFinger: FingerNumber,
     hand: Hand,
+    allowsHandRelocation: boolean,
   ): number {
     const interval = currentPitch - previousPitch;
     const distance = Math.abs(interval);
@@ -298,9 +301,12 @@ export class FingeringComputer {
     }
 
     if (previousFinger === currentFinger) {
-      // Reusing a finger on a neighbouring key is awkward, but after a leap
-      // the hand is relocating anyway and reuse can be entirely sensible.
-      return 3.2 + Math.max(0, 5 - distance) * 0.75;
+      if (allowsHandRelocation) return 3.2 + Math.max(0, 5 - distance) * 0.75;
+      // Sliding or hopping one finger within a fifth is a poor default for a
+      // connected passage. Reserve same-finger relocation for genuinely large
+      // leaps, where the hand must reset regardless of the chosen fingers.
+      if (distance <= 7) return 9 + (7 - distance) * 1.2;
+      return 3.2;
     }
 
     let cost = this.spanCost(previousFinger, currentFinger, interval, hand);
