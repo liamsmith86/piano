@@ -183,7 +183,7 @@ export class SettingsPanel {
             <input type="checkbox" data-setting="showFingering" ${this.settings.showFingering ? 'checked' : ''} />
             <div class="sp-toggle-info">
               <span class="sp-toggle-label">Suggested Fingering</span>
-              <span class="sp-toggle-desc">Show optimal finger numbers (1-5) for each note, computed automatically</span>
+              <span class="sp-toggle-desc">Show sequence-aware ergonomic finger numbers (1-5) as a practice starting point</span>
             </div>
           </label>
           <label class="sp-toggle">

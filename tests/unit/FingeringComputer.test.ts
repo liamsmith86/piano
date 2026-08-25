@@ -110,6 +110,30 @@ describe('FingeringComputer', () => {
     expect(sorted[2].finger).toBe(5);
   });
 
+  it('uses a compact shape for a first-inversion triad', () => {
+    const fc = new FingeringComputer();
+    const chord = [makeNote(64), makeNote(67), makeNote(72)]; // E-G-C
+    fc.compute([makeEvent(0, chord)], 'right');
+
+    expect(chord.sort((a, b) => a.midi - b.midi).map(note => note.finger)).toEqual([1, 2, 5]);
+  });
+
+  it('keeps repeated chord fingering stable without distorting its shape', () => {
+    const fc = new FingeringComputer();
+    const events = [
+      makeEvent(0, [makeNote(60), makeNote(64), makeNote(67)]),
+      makeEvent(1, [makeNote(60), makeNote(64), makeNote(67)]),
+      makeEvent(2, [makeNote(62), makeNote(65), makeNote(69)]),
+    ];
+    fc.compute(events, 'right');
+
+    expect(events.map(event => event.notes.map(note => note.finger))).toEqual([
+      [1, 3, 5],
+      [1, 3, 5],
+      [1, 3, 5],
+    ]);
+  });
+
   it('assigns chord with 2 notes as 1-5', () => {
     const fc = new FingeringComputer();
     const chord = [makeNote(60), makeNote(67)]; // C-G
@@ -191,6 +215,23 @@ describe('FingeringComputer', () => {
     expect(notes[2].finger).toBeDefined();
   });
 
+  it('assigns duplicate voices on the same key to one physical finger', () => {
+    const fc = new FingeringComputer();
+    const duplicatePitch = [makeNote(60), { ...makeNote(60), voice: 2 }];
+    fc.compute([makeEvent(0, duplicatePitch)], 'right');
+
+    expect(duplicatePitch[0].finger).toBeDefined();
+    expect(duplicatePitch[1].finger).toBe(duplicatePitch[0].finger);
+  });
+
+  it('does not invent a one-hand fingering for more than five simultaneous keys', () => {
+    const fc = new FingeringComputer();
+    const chord = [60, 62, 64, 65, 67, 69].map(midi => makeNote(midi));
+    fc.compute([makeEvent(0, chord)], 'right');
+
+    expect(chord.every(note => note.finger === undefined)).toBe(true);
+  });
+
   it('respects maxSpan setting', () => {
     const fc = new FingeringComputer();
     fc.setMaxSpan(12); // beginner: one octave
@@ -211,6 +252,10 @@ describe('FingeringComputer', () => {
 
     const fingers = getFingers(events);
     expect(fingers.every(f => f !== undefined && f >= 1 && f <= 5)).toBe(true);
+    const blackKeyIndexes = midis
+      .map((midi, index) => ([1, 3, 6, 8, 10].includes(midi % 12) ? index : -1))
+      .filter(index => index >= 0);
+    expect(blackKeyIndexes.every(index => fingers[index] !== 1)).toBe(true);
   });
 
   it('handles repeated same note', () => {
@@ -255,5 +300,11 @@ describe('FingeringComputer', () => {
     // Both should produce valid fingering
     expect(getFingers(events1).every(f => f !== undefined && f! >= 1 && f! <= 5)).toBe(true);
     expect(getFingers(events2).every(f => f !== undefined && f! >= 1 && f! <= 5)).toBe(true);
+  });
+
+  it('rejects invalid maximum hand spans', () => {
+    const fc = new FingeringComputer();
+    expect(() => fc.setMaxSpan(0)).toThrow(RangeError);
+    expect(() => fc.setMaxSpan(Number.NaN)).toThrow(RangeError);
   });
 });

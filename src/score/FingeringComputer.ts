@@ -1,252 +1,393 @@
 import type { NoteEvent, NoteInfo } from '../types';
 
 export type FingerNumber = 1 | 2 | 3 | 4 | 5;
+type Hand = 'left' | 'right';
 
-/**
- * Comfortable semitone spans between finger pairs.
- * [lowerFinger][higherFinger] = { min, max } comfortable interval in semitones.
- * These are symmetric (physical stretch is the same in either direction).
- */
-const COMFORT: Record<number, Record<number, { min: number; max: number }>> = {
-  1: { 2: { min: 1, max: 5 },  3: { min: 3, max: 7 },  4: { min: 4, max: 9 },  5: { min: 5, max: 11 } },
-  2: { 3: { min: 1, max: 3 },  4: { min: 2, max: 5 },  5: { min: 3, max: 7 } },
-  3: { 4: { min: 1, max: 3 },  5: { min: 2, max: 5 } },
-  4: { 5: { min: 1, max: 3 } },
-};
+interface FingerSpan {
+  minPractical: number;
+  minComfortable: number;
+  minRelaxed: number;
+  maxRelaxed: number;
+  maxComfortable: number;
+  maxPractical: number;
+}
 
-/** Get comfort span for any finger pair (order-independent). */
-function getComfort(f1: number, f2: number): { min: number; max: number } | null {
-  const lo = Math.min(f1, f2);
-  const hi = Math.max(f1, f2);
-  if (lo === hi) return { min: 0, max: 0 };
-  return COMFORT[lo]?.[hi] ?? null;
+interface FingeringCandidate {
+  /** Fingers aligned with a position's ascending, unique pitches. */
+  fingers: FingerNumber[];
+  intrinsicCost: number;
+  handAnchor: number;
+}
+
+interface FingeringPosition {
+  event: NoteEvent;
+  pitches: number[];
+  notesByPitch: Map<number, NoteInfo[]>;
+  candidates: FingeringCandidate[];
 }
 
 /**
- * DP-based piano fingering algorithm inspired by Parncutt (1997).
+ * Practical, comfortable, and relaxed spans from Parncutt et al. (1997).
  *
- * Cost function considers:
- * 1. Stretch — penalty for intervals outside the comfortable span
- * 2. Finger order — ascending pitch should use ascending finger numbers
- * 3. Thumb crossing — specific costs for thumb-under and finger-over
- * 4. Sequential preference — prefer adjacent fingers (1→2, 2→3) for stepwise motion
- * 5. Weak finger — small penalty for ring/pinky on wide intervals
- * 6. Position change — penalize unnecessary hand shifts
- * 7. Same finger — heavy penalty for reusing the same finger on different notes
+ * The table is directional: its keys are increasing right-hand finger pairs,
+ * and negative intervals describe thumb crossings. Left-hand motion and
+ * decreasing finger pairs are mirrored before consulting it.
+ */
+const FINGER_SPANS: Record<string, FingerSpan> = {
+  '1-2': { minPractical: -5, minComfortable: -3, minRelaxed: 1, maxRelaxed: 5, maxComfortable: 8, maxPractical: 10 },
+  '1-3': { minPractical: -4, minComfortable: -2, minRelaxed: 3, maxRelaxed: 7, maxComfortable: 10, maxPractical: 12 },
+  '1-4': { minPractical: -3, minComfortable: -1, minRelaxed: 5, maxRelaxed: 9, maxComfortable: 12, maxPractical: 14 },
+  '1-5': { minPractical: -1, minComfortable: 1, minRelaxed: 7, maxRelaxed: 10, maxComfortable: 13, maxPractical: 15 },
+  '2-3': { minPractical: 1, minComfortable: 1, minRelaxed: 1, maxRelaxed: 2, maxComfortable: 3, maxPractical: 5 },
+  '2-4': { minPractical: 1, minComfortable: 1, minRelaxed: 3, maxRelaxed: 4, maxComfortable: 5, maxPractical: 7 },
+  '2-5': { minPractical: 2, minComfortable: 2, minRelaxed: 5, maxRelaxed: 6, maxComfortable: 8, maxPractical: 10 },
+  '3-4': { minPractical: 1, minComfortable: 1, minRelaxed: 1, maxRelaxed: 2, maxComfortable: 2, maxPractical: 4 },
+  '3-5': { minPractical: 1, minComfortable: 1, minRelaxed: 3, maxRelaxed: 4, maxComfortable: 5, maxPractical: 7 },
+  '4-5': { minPractical: 1, minComfortable: 1, minRelaxed: 1, maxRelaxed: 2, maxComfortable: 3, maxPractical: 5 },
+};
+
+const FINGERS: FingerNumber[] = [1, 2, 3, 4, 5];
+const NATURAL_FINGER_OFFSETS = [0, 0, 2, 4, 5, 7];
+const PITCH_CLASS_TO_DIATONIC = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+const BLACK_PITCH_CLASSES = new Set([1, 3, 6, 8, 10]);
+const INFINITY = Number.POSITIVE_INFINITY;
+
+/**
+ * Sequence-aware ergonomic piano fingering suggestions.
+ *
+ * Each onset becomes a trellis layer containing every non-crossing fingering
+ * for that note or chord. Dynamic programming then chooses the lowest-cost
+ * path through the whole passage. Costs account for:
+ *
+ * - directional practical/comfortable/relaxed finger spans;
+ * - simultaneous chord shape (vertical cost);
+ * - motion between every note in adjacent positions (horizontal cost);
+ * - stable fingers on repeated pitches and repeated chords;
+ * - thumb crossings, black-key geometry, and unnecessary hand shifts.
+ *
+ * This follows the ergonomic trellis approach described by Parncutt et al.
+ * (1997) and its polyphonic extension by Al Kasimi, Nichols, and Raphael
+ * (2007). It intentionally remains a suggestion: phrasing, articulation,
+ * hand shape, and a player's interpretation can all justify alternatives.
  */
 export class FingeringComputer {
-  private maxSpan = 18;
+  private maxSpan = 15;
 
   setMaxSpan(semitones: number): void {
+    if (!Number.isFinite(semitones) || semitones <= 0) {
+      throw new RangeError('Maximum hand span must be a positive number');
+    }
     this.maxSpan = semitones;
   }
 
-  compute(events: NoteEvent[], hand: 'left' | 'right'): void {
-    if (events.length === 0) return;
-
-    const positions: { notes: NoteInfo[]; midis: number[] }[] = [];
+  compute(events: NoteEvent[], hand: Hand): void {
     for (const event of events) {
-      const notes = event.notes.filter(n => !n.tied);
-      if (notes.length === 0) continue;
-      const midis = notes.map(n => n.midi).sort((a, b) =>
-        hand === 'right' ? a - b : b - a
-      );
-      positions.push({ notes, midis });
+      for (const note of event.notes) note.finger = undefined;
     }
+
+    const positions = events
+      .map(event => this.createPosition(event, hand))
+      .filter((position): position is FingeringPosition => position !== null);
 
     if (positions.length === 0) return;
 
-    for (const pos of positions) {
-      if (pos.notes.length > 1) {
-        this.assignChord(pos.notes, hand);
+    // A six-note attack cannot have a truthful one-hand fingering. Treat it as
+    // a boundary rather than inventing duplicate fingers or silently dropping
+    // notes, then optimise each playable passage independently.
+    let passageStart = 0;
+    for (let i = 0; i <= positions.length; i++) {
+      const isBoundary = i === positions.length || positions[i].candidates.length === 0;
+      if (!isBoundary) continue;
+
+      if (i > passageStart) this.assignPassage(positions.slice(passageStart, i), hand);
+      passageStart = i + 1;
+    }
+  }
+
+  private createPosition(event: NoteEvent, hand: Hand): FingeringPosition | null {
+    const notesByPitch = new Map<number, NoteInfo[]>();
+    for (const note of event.notes) {
+      if (note.tied) continue;
+      const notes = notesByPitch.get(note.midi) ?? [];
+      notes.push(note);
+      notesByPitch.set(note.midi, notes);
+    }
+    if (notesByPitch.size === 0) return null;
+
+    const pitches = [...notesByPitch.keys()].sort((a, b) => a - b);
+    const fingerings = pitches.length <= FINGERS.length
+      ? this.orderedFingerings(pitches.length, hand)
+      : [];
+    const candidates = fingerings.map(fingers => ({
+      fingers,
+      intrinsicCost: this.verticalCost(pitches, fingers, hand),
+      handAnchor: this.handAnchor(pitches, fingers, hand),
+    }));
+
+    return { event, pitches, notesByPitch, candidates };
+  }
+
+  private orderedFingerings(noteCount: number, hand: Hand): FingerNumber[][] {
+    const combinations: FingerNumber[][] = [];
+
+    const choose = (start: number, selected: FingerNumber[]): void => {
+      if (selected.length === noteCount) {
+        combinations.push(hand === 'right' ? selected : [...selected].reverse());
+        return;
       }
-    }
+      const remaining = noteCount - selected.length;
+      for (let i = start; i <= FINGERS.length - remaining; i++) {
+        choose(i + 1, [...selected, FINGERS[i]]);
+      }
+    };
 
-    this.dpAssign(positions, hand);
+    choose(0, []);
+    return combinations;
   }
 
-  private assignChord(notes: NoteInfo[], hand: 'left' | 'right'): void {
-    const sorted = [...notes].sort((a, b) =>
-      hand === 'right' ? a.midi - b.midi : b.midi - a.midi
-    );
-    const count = Math.min(sorted.length, 5);
+  private assignPassage(positions: FingeringPosition[], hand: Hand): void {
+    const costs: Float64Array[] = [];
+    const parents: Int16Array[] = [];
 
-    if (count === 1) { sorted[0].finger = 3; return; }
-    if (count === 2) {
-      const interval = Math.abs(sorted[1].midi - sorted[0].midi);
-      sorted[0].finger = 1;
-      sorted[1].finger = this.fingerForDyadInterval(interval);
-      return;
-    }
-    if (count === 3) { sorted[0].finger = 1; sorted[1].finger = 3; sorted[2].finger = 5; return; }
-    if (count === 4) { sorted[0].finger = 1; sorted[1].finger = 2; sorted[2].finger = 3; sorted[3].finger = 5; return; }
-    for (let i = 0; i < count; i++) sorted[i].finger = (i + 1) as FingerNumber;
-  }
+    const firstCosts = new Float64Array(positions[0].candidates.length);
+    const firstParents = new Int16Array(positions[0].candidates.length).fill(-1);
+    positions[0].candidates.forEach((candidate, index) => {
+      firstCosts[index] = candidate.intrinsicCost + this.entryCost(candidate);
+    });
+    costs.push(firstCosts);
+    parents.push(firstParents);
 
-  /** Choose a comfortable upper finger instead of stretching every dyad 1-5. */
-  private fingerForDyadInterval(interval: number): FingerNumber {
-    if (interval === 0) return 1;
-    if (interval <= 2) return 2;
-    if (interval <= 4) return 3;
-    if (interval <= 5) return 4;
-    return 5;
-  }
+    for (let i = 1; i < positions.length; i++) {
+      const previous = positions[i - 1];
+      const current = positions[i];
+      const currentCosts = new Float64Array(current.candidates.length).fill(INFINITY);
+      const currentParents = new Int16Array(current.candidates.length).fill(-1);
 
-  private dpAssign(
-    positions: { notes: NoteInfo[]; midis: number[] }[],
-    hand: 'left' | 'right',
-  ): void {
-    const repMidis: number[] = positions.map(p => p.midis[0]);
-    const n = positions.length;
-    const INF = 1e9;
-
-    let dp = new Float64Array(5).fill(INF);
-    let parent = new Int8Array(5).fill(-1);
-    const allParents: Int8Array[] = [];
-
-    if (positions[0].notes.length > 1) {
-      const f = (positions[0].notes.find(n => n.midi === repMidis[0])?.finger ?? 1) as number;
-      dp[f - 1] = 0;
-    } else {
-      for (let f = 0; f < 5; f++) dp[f] = 0;
-    }
-    allParents.push(new Int8Array(parent));
-
-    for (let i = 1; i < n; i++) {
-      const newDp = new Float64Array(5).fill(INF);
-      const newParent = new Int8Array(5).fill(-1);
-      const interval = repMidis[i] - repMidis[i - 1];
-      const isChord = positions[i].notes.length > 1;
-
-      if (isChord) {
-        const chordFinger = (positions[i].notes.find(n => n.midi === repMidis[i])?.finger ?? 1) as number;
-        const cf = chordFinger - 1;
-        for (let pf = 0; pf < 5; pf++) {
-          if (dp[pf] >= INF) continue;
-          const cost = dp[pf] + this.transitionCost(pf + 1, chordFinger, interval, hand);
-          if (cost < newDp[cf]) { newDp[cf] = cost; newParent[cf] = pf; }
-        }
-      } else {
-        for (let cf = 0; cf < 5; cf++) {
-          for (let pf = 0; pf < 5; pf++) {
-            if (dp[pf] >= INF) continue;
-            const cost = dp[pf] + this.transitionCost(pf + 1, cf + 1, interval, hand);
-            if (cost < newDp[cf]) { newDp[cf] = cost; newParent[cf] = pf; }
+      current.candidates.forEach((candidate, candidateIndex) => {
+        previous.candidates.forEach((previousCandidate, previousIndex) => {
+          const cost = costs[i - 1][previousIndex]
+            + candidate.intrinsicCost
+            + this.horizontalCost(previous, previousCandidate, current, candidate, hand);
+          if (cost < currentCosts[candidateIndex]) {
+            currentCosts[candidateIndex] = cost;
+            currentParents[candidateIndex] = previousIndex;
           }
-        }
-      }
+        });
+      });
 
-      dp = newDp;
-      parent = newParent;
-      allParents.push(new Int8Array(parent));
+      costs.push(currentCosts);
+      parents.push(currentParents);
     }
 
-    let bestFinger = 0;
-    let bestCost = INF;
-    for (let f = 0; f < 5; f++) {
-      if (dp[f] < bestCost) { bestCost = dp[f]; bestFinger = f; }
+    const finalCosts = costs[costs.length - 1];
+    let candidateIndex = 0;
+    for (let i = 1; i < finalCosts.length; i++) {
+      if (finalCosts[i] < finalCosts[candidateIndex]) candidateIndex = i;
     }
 
-    const fingers: number[] = new Array(n);
-    fingers[n - 1] = bestFinger;
-    for (let i = n - 1; i > 0; i--) fingers[i - 1] = allParents[i][fingers[i]];
-
-    for (let i = 0; i < n; i++) {
-      if (positions[i].notes.length === 1) {
-        positions[i].notes[0].finger = (fingers[i] + 1) as FingerNumber;
-      }
+    for (let i = positions.length - 1; i >= 0; i--) {
+      this.applyCandidate(positions[i], positions[i].candidates[candidateIndex]);
+      candidateIndex = parents[i][candidateIndex];
     }
   }
 
-  private transitionCost(
-    prevFinger: number,
-    currFinger: number,
-    interval: number,
-    hand: 'left' | 'right',
-  ): number {
-    const absInterval = Math.abs(interval);
+  private applyCandidate(position: FingeringPosition, candidate: FingeringCandidate): void {
+    position.pitches.forEach((pitch, index) => {
+      for (const note of position.notesByPitch.get(pitch) ?? []) {
+        note.finger = candidate.fingers[index];
+      }
+    });
+  }
 
-    // Same note repeated
-    if (absInterval === 0) {
-      // Same finger on repeated note is natural
-      return prevFinger === currFinger ? 0 : 1;
-    }
+  private entryCost(candidate: FingeringCandidate): number {
+    if (candidate.fingers.length !== 1) return 0;
+    // An isolated phrase normally begins near the strong central fingers, but
+    // this small preference is easily outweighed by the following passage.
+    return [0, 0.45, 0.12, 0, 0.35, 0.5][candidate.fingers[0]];
+  }
 
-    // Same finger on different notes — very bad
-    if (prevFinger === currFinger) return 25;
-
-    // For left hand, thumb (1) is on the HIGH side, pinky (5) on the LOW side.
-    // Right hand: ascending pitch → ascending finger numbers
-    // Left hand: ascending pitch → descending finger numbers (invert)
-    const dir = hand === 'right' ? Math.sign(interval) : -Math.sign(interval);
-    const fingerDelta = currFinger - prevFinger;
-
-    // Is this a thumb crossing?
-    const isThumbUnder = (dir > 0 && prevFinger > 1 && currFinger === 1);
-    const isFingerOver = (dir < 0 && prevFinger === 1 && currFinger > 1);
-    const isThumbCrossing = isThumbUnder || isFingerOver;
-
+  private verticalCost(pitches: number[], fingers: FingerNumber[], hand: Hand): number {
     let cost = 0;
 
-    if (isThumbCrossing) {
-      // --- Thumb crossing: separate cost model ---
-      // Don't use the normal stretch table — crossings have their own mechanics.
-      if (isThumbUnder) {
-        // After finger 3 is the standard and most comfortable crossing
-        if (prevFinger === 3) cost += 1;
-        else if (prevFinger === 2) cost += 3;
-        else if (prevFinger === 4) cost += 4;
-        else cost += 10; // finger 5 → thumb is very hard
+    for (let i = 0; i < pitches.length; i++) {
+      cost += this.keyGeometryCost(pitches[i], fingers[i]);
+      if (i === 0) continue;
 
-        // Crossings work best with intervals of 1-5 semitones
-        if (absInterval > 7) cost += (absInterval - 7) * 2;
-      } else {
-        // Finger over thumb: to finger 3 is standard
-        if (currFinger === 3) cost += 1;
-        else if (currFinger === 2) cost += 2;
-        else if (currFinger === 4) cost += 5;
-        else cost += 12;
+      const interval = pitches[i] - pitches[i - 1];
+      cost += this.spanCost(fingers[i - 1], fingers[i], interval, hand);
 
-        if (absInterval > 7) cost += (absInterval - 7) * 2;
-      }
-    } else {
-      // --- Normal (non-crossing) transition ---
-
-      // 1. Stretch penalty using comfort table
-      const comfort = getComfort(prevFinger, currFinger);
-      if (comfort) {
-        if (absInterval > comfort.max) {
-          cost += (absInterval - comfort.max) * 3;
-        } else if (absInterval < comfort.min) {
-          cost += (comfort.min - absInterval) * 2;
-        }
-      }
-
-      // 2. Natural finger order: ascending pitch → ascending fingers
-      if (dir > 0 && fingerDelta <= 0) {
-        cost += 12;
-      } else if (dir < 0 && fingerDelta >= 0) {
-        cost += 12;
-      }
-
-      // 3. Sequential finger preference: penalize skipping fingers on small intervals
-      const fingerGap = Math.abs(fingerDelta) - 1;
-      if (fingerGap > 0 && absInterval <= 4) {
-        cost += fingerGap * 4;
-      }
+      // In a relaxed chord, diatonic note spacing usually resembles finger
+      // spacing. This resolves otherwise equivalent shapes without forcing
+      // every chord into the old 1-3-5 template.
+      const diatonicSteps = Math.min(4, this.diatonicDistance(pitches[i - 1], pitches[i]));
+      const fingerSteps = Math.abs(fingers[i] - fingers[i - 1]);
+      cost += Math.abs(diatonicSteps - fingerSteps) * 0.85;
     }
 
-    // --- Weak finger penalty for wide intervals ---
-    if (absInterval > 5) {
-      if (currFinger === 4) cost += 1;
-      if (currFinger === 5) cost += 2;
+    if (pitches.length > 2) {
+      const last = pitches.length - 1;
+      cost += this.spanCost(fingers[0], fingers[last], pitches[last] - pitches[0], hand) * 0.35;
     }
 
-    // --- Beyond max hand span ---
-    if (absInterval > this.maxSpan) {
-      cost += (absInterval - this.maxSpan) * 5;
+    if (pitches.length > 1) {
+      const span = pitches[pitches.length - 1] - pitches[0];
+      if (span > this.maxSpan) cost += 30 + (span - this.maxSpan) * 8;
+
+      const lowOuterFinger = hand === 'right' ? fingers[0] - 1 : 5 - fingers[0];
+      const highOuterFinger = hand === 'right'
+        ? 5 - fingers[fingers.length - 1]
+        : fingers[fingers.length - 1] - 1;
+      cost += (lowOuterFinger + highOuterFinger) * 0.25;
     }
 
     return cost;
+  }
+
+  private horizontalCost(
+    previous: FingeringPosition,
+    previousCandidate: FingeringCandidate,
+    current: FingeringPosition,
+    candidate: FingeringCandidate,
+    hand: Hand,
+  ): number {
+    let pairCost = 0;
+    let pairCount = 0;
+
+    for (let previousIndex = 0; previousIndex < previous.pitches.length; previousIndex++) {
+      for (let currentIndex = 0; currentIndex < current.pitches.length; currentIndex++) {
+        pairCost += this.noteTransitionCost(
+          previous.pitches[previousIndex],
+          previousCandidate.fingers[previousIndex],
+          current.pitches[currentIndex],
+          candidate.fingers[currentIndex],
+          hand,
+        );
+        pairCount++;
+      }
+    }
+
+    let repeatedPitchCost = 0;
+    for (let previousIndex = 0; previousIndex < previous.pitches.length; previousIndex++) {
+      const currentIndex = current.pitches.indexOf(previous.pitches[previousIndex]);
+      if (currentIndex < 0) continue;
+      if (previousCandidate.fingers[previousIndex] !== candidate.fingers[currentIndex]) {
+        repeatedPitchCost += 5;
+      }
+    }
+
+    const beatGap = current.event.timestampBeats - previous.event.timestampBeats;
+    const motionFreedom = Math.min(1, Math.max(0, beatGap - 1) / 3);
+    const anchorShift = Math.abs(candidate.handAnchor - previousCandidate.handAnchor);
+    const anchorCost = Math.max(0, anchorShift - 2) * 0.08 * (1 - motionFreedom * 0.65);
+
+    return pairCost / Math.max(1, pairCount) + repeatedPitchCost + anchorCost;
+  }
+
+  private noteTransitionCost(
+    previousPitch: number,
+    previousFinger: FingerNumber,
+    currentPitch: number,
+    currentFinger: FingerNumber,
+    hand: Hand,
+  ): number {
+    const interval = currentPitch - previousPitch;
+    const distance = Math.abs(interval);
+
+    if (distance === 0) {
+      return previousFinger === currentFinger ? 0 : 1.4;
+    }
+
+    if (previousFinger === currentFinger) {
+      // Reusing a finger on a neighbouring key is awkward, but after a leap
+      // the hand is relocating anyway and reuse can be entirely sensible.
+      return 3.2 + Math.max(0, 5 - distance) * 0.75;
+    }
+
+    let cost = this.spanCost(previousFinger, currentFinger, interval, hand);
+    const handInterval = hand === 'right' ? interval : -interval;
+    const fingerDelta = currentFinger - previousFinger;
+    const isThumbCrossover = handInterval * fingerDelta < 0
+      && (previousFinger === 1 || currentFinger === 1);
+    const isNonThumbCrossover = handInterval * fingerDelta < 0
+      && previousFinger !== 1
+      && currentFinger !== 1;
+
+    // Horizontal motion may relocate the hand instead of holding a stretch.
+    // Keep close non-thumb crossovers expensive, while allowing a clean shift
+    // for leaps that cannot be connected in one position.
+    const relocationCost = 4.4 + Math.min(distance, 24) * 0.1;
+    cost = Math.min(cost, relocationCost);
+    if (isThumbCrossover && distance <= 7) cost += 0.65;
+    if (isNonThumbCrossover && distance <= 7) cost += 7;
+
+    if (distance <= 4) {
+      const diatonicSteps = this.diatonicDistance(previousPitch, currentPitch);
+      const fingerSteps = Math.abs(fingerDelta);
+      cost += Math.abs(Math.min(4, diatonicSteps) - fingerSteps) * 0.32;
+    }
+
+    cost += this.keyGeometryCost(currentPitch, currentFinger) * 0.45;
+    return cost;
+  }
+
+  private spanCost(
+    previousFinger: FingerNumber,
+    currentFinger: FingerNumber,
+    interval: number,
+    hand: Hand,
+  ): number {
+    if (previousFinger === currentFinger) return interval === 0 ? 0 : 12;
+
+    const lowerFinger = Math.min(previousFinger, currentFinger);
+    const higherFinger = Math.max(previousFinger, currentFinger);
+    const span = FINGER_SPANS[`${lowerFinger}-${higherFinger}`];
+    if (!span) return 20;
+
+    const handInterval = hand === 'right' ? interval : -interval;
+    const orientedInterval = previousFinger < currentFinger ? handInterval : -handInterval;
+
+    if (orientedInterval < span.minPractical) {
+      return 18 + (span.minPractical - orientedInterval) * 6;
+    }
+    if (orientedInterval > span.maxPractical) {
+      return 18 + (orientedInterval - span.maxPractical) * 6;
+    }
+    if (orientedInterval < span.minComfortable) {
+      return 6 + (span.minComfortable - orientedInterval) * 2.5;
+    }
+    if (orientedInterval > span.maxComfortable) {
+      return 6 + (orientedInterval - span.maxComfortable) * 2.5;
+    }
+    if (orientedInterval < span.minRelaxed) {
+      return (span.minRelaxed - orientedInterval) * 0.75;
+    }
+    if (orientedInterval > span.maxRelaxed) {
+      return (orientedInterval - span.maxRelaxed) * 0.75;
+    }
+    return 0;
+  }
+
+  private handAnchor(pitches: number[], fingers: FingerNumber[], hand: Hand): number {
+    const direction = hand === 'right' ? 1 : -1;
+    const total = pitches.reduce((sum, pitch, index) => (
+      sum + pitch - direction * NATURAL_FINGER_OFFSETS[fingers[index]]
+    ), 0);
+    return total / pitches.length;
+  }
+
+  private keyGeometryCost(pitch: number, finger: FingerNumber): number {
+    const isBlackKey = BLACK_PITCH_CLASSES.has(((pitch % 12) + 12) % 12);
+    if (isBlackKey && finger === 1) return 1.6;
+    if (isBlackKey && finger === 5) return 0.45;
+    return 0;
+  }
+
+  private diatonicDistance(firstPitch: number, secondPitch: number): number {
+    const ordinal = (pitch: number): number => {
+      const octave = Math.floor(pitch / 12);
+      const pitchClass = ((pitch % 12) + 12) % 12;
+      return octave * 7 + PITCH_CLASS_TO_DIATONIC[pitchClass];
+    };
+    return Math.abs(ordinal(secondPitch) - ordinal(firstPitch));
   }
 }
