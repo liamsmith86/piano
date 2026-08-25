@@ -265,6 +265,9 @@ test.describe('Visual Regression: Wrong Note Marker', () => {
       window.pianoApp.simulateNoteInput(wrong);
     });
     await expect(page.locator('.wrong-note-marker')).toBeVisible();
+    // Practice input starts a native smooth cursor scroll. Let the browser's
+    // animation finish before pinning this visual fixture to the score top.
+    await page.waitForTimeout(750);
     await page.locator('#score-container').evaluate(element => { element.scrollTop = 0; });
 
     const score = page.locator('#score-container');
