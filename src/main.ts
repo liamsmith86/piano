@@ -107,15 +107,6 @@ async function main(): Promise<void> {
     setupServiceWorker(status);
   }
 
-  // Keyboard visibility: hidden by default, auto-shows in practice mode
-  const updateKeyboardVisibility = () => {
-    const settings = settingsPanel.getSettings();
-    const inPractice = app.getMode() === 'practice' && app.practiceMode.isActive();
-    const visible = settings.showVirtualKeyboard || inPractice;
-    if (visible) app.virtualKeyboard?.ensureRendered();
-    keyboardContainer.style.display = visible ? '' : 'none';
-  };
-
   // Apply settings
   const applySettings = (settings: AppSettings) => {
     app.virtualKeyboard?.setShowNoteNames(settings.showNoteNames);
@@ -124,7 +115,9 @@ async function main(): Promise<void> {
     app.setAutoAdvance(settings.autoAdvance ? settings.autoAdvanceSeconds * 1000 : 0);
     app.setWrongNoteLabels(settings.wrongNoteLabels);
     app.setHighlightExpectedKeys(settings.highlightExpectedKeys);
-    updateKeyboardVisibility();
+    // The saved preference controls visibility in both play and practice modes.
+    if (settings.showVirtualKeyboard) app.virtualKeyboard?.ensureRendered();
+    keyboardContainer.style.display = settings.showVirtualKeyboard ? '' : 'none';
     updateNoteDisplay();
     app.updateOverlays({
       showNoteNamesOnScore: settings.showNoteNamesOnScore,
@@ -136,8 +129,6 @@ async function main(): Promise<void> {
 
   settingsPanel.setOnChange(applySettings);
   applySettings(settingsPanel.getSettings());
-  // Hide keyboard by default (setting defaults to false)
-  updateKeyboardVisibility();
 
   toolbar.setOnShowSettings(() => {
     if (settingsPanel.isVisible()) {
@@ -210,7 +201,6 @@ async function main(): Promise<void> {
       }
       await app.startPractice();
       updateNoteDisplay();
-      updateKeyboardVisibility();
     } catch (err) {
       console.error('Practice start error:', err);
       countIn.hide();
@@ -329,7 +319,6 @@ async function main(): Promise<void> {
   app.on('modeChanged', ({ mode }) => {
     cancelPendingStart();
     updateNoteDisplay();
-    updateKeyboardVisibility();
     if (mode !== 'practice') {
       scoreContainer.classList.remove('practice-active');
     }
@@ -338,7 +327,6 @@ async function main(): Promise<void> {
   app.on('practiceStateChanged', ({ active }) => {
     scoreContainer.classList.toggle('practice-active', active);
     updateNoteDisplay();
-    updateKeyboardVisibility();
     if (active) {
       const song = app.getLoadedSong();
       if (song) {
@@ -364,7 +352,6 @@ async function main(): Promise<void> {
   app.on('songEnd', ({ stats }) => {
     noteDisplay.hide();
     scoreContainer.classList.remove('practice-active');
-    updateKeyboardVisibility();
     if (app.getMode() === 'practice') {
       practiceComplete.show(stats);
 
@@ -450,7 +437,6 @@ async function main(): Promise<void> {
     } else {
       if (app.practiceMode.isActive()) {
         app.stopPractice();
-        updateKeyboardVisibility();
       } else {
         await practiceWithCountIn();
       }

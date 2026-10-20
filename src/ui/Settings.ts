@@ -134,7 +134,7 @@ export class SettingsPanel {
             <input type="checkbox" data-setting="showVirtualKeyboard" ${this.settings.showVirtualKeyboard ? 'checked' : ''} />
             <div class="sp-toggle-info">
               <span class="sp-toggle-label">Virtual Keyboard</span>
-              <span class="sp-toggle-desc">Show the on-screen piano keyboard (auto-shows in practice mode)</span>
+              <span class="sp-toggle-desc">Show the on-screen piano keyboard in play and practice modes</span>
             </div>
           </label>
           <label class="sp-toggle">

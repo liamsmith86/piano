@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+async function enableVirtualKeyboard(page: Page) {
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  await page.locator('[data-setting="showVirtualKeyboard"]').check();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+}
 
 async function waitForApp(page: any) {
   await page.waitForFunction(() => window.pianoApp !== undefined, { timeout: 10000 });
@@ -39,9 +45,15 @@ test.describe('Visual Regression: Score Rendering', () => {
 });
 
 test.describe('Visual Regression: Note Coloring', () => {
-  test('blue highlight on current notes in practice mode', async ({ page }) => {
+  // Keep these score-color fixtures in their existing keyboard-visible layout,
+  // independently of the user's default keyboard preference.
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
+    await enableVirtualKeyboard(page);
+  });
+
+  test('blue highlight on current notes in practice mode', async ({ page }) => {
     await loadSong(page);
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
@@ -56,8 +68,6 @@ test.describe('Visual Regression: Note Coloring', () => {
   });
 
   test('green notes after correct input', async ({ page }) => {
-    await page.goto('/');
-    await waitForApp(page);
     await loadSong(page);
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
@@ -203,7 +213,7 @@ test.describe('Visual Regression: Virtual Keyboard', () => {
 
     await loadSong(page);
 
-    // Start practice mode which auto-shows keyboard
+    // Start practice to highlight the expected keys on the enabled keyboard.
     await page.evaluate(() => window.pianoApp.setMode('practice'));
     await page.evaluate(async () => await window.pianoApp.startPractice());
     await page.waitForTimeout(500);
@@ -252,6 +262,7 @@ test.describe('Visual Regression: Wrong Note Marker', () => {
   test('wrong note marker appears on staff', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);
+    await enableVirtualKeyboard(page);
     await loadSong(page);
 
     await page.evaluate(() => window.pianoApp.setMode('practice'));
