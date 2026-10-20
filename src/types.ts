@@ -102,6 +102,9 @@ export interface AppEventMap {
 
 export type AppEventName = keyof AppEventMap;
 
+/** Which songs the library lists; chosen at build time via PIANO_SONG_LIBRARY (see vite.config.ts). */
+export type SongLibrary = 'bundled' | 'all' | 'personal';
+
 export const PRELOADED_SONGS: SongInfo[] = [
   { id: 'mozart-piano-sonata', title: 'Mozart - Piano Sonata', url: '/songs/MozartPianoSonata.mxl', source: 'preloaded' },
   { id: 'mozart-trio', title: 'Mozart - Trio', url: '/songs/MozartTrio.mxl', source: 'preloaded' },
@@ -121,6 +124,10 @@ export const PRELOADED_SONGS: SongInfo[] = [
   { id: 'echigo-jishi', title: 'Echigo-Jishi', url: '/songs/Echigo-Jishi.mxl', source: 'preloaded' },
   { id: 'chant', title: 'Chant', url: '/songs/Chant.mxl', source: 'preloaded' },
 ];
+
+/** Bundled songs the library lists; the personal-only LAN build hides them. */
+export const LIBRARY_BUNDLED_SONGS: SongInfo[] =
+  import.meta.env.PIANO_SONG_LIBRARY === 'personal' ? [] : PRELOADED_SONGS;
 
 // MIDI note number ↔ note name conversion
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];

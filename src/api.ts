@@ -2,7 +2,7 @@ import type {
   NoteEvent, SongInfo, HandSelection, AppMode, PlaybackState, PracticeState,
   AppEventName, AppEventMap, PlaybackStartOptions,
 } from './types';
-import { PRELOADED_SONGS, filenameToTitle } from './types';
+import { LIBRARY_BUNDLED_SONGS, filenameToTitle } from './types';
 import { EventEmitter } from './events';
 import { ScoreRenderer } from './score/ScoreRenderer';
 import { ScoreAnalyzer } from './score/ScoreAnalyzer';
@@ -103,7 +103,7 @@ export class PianoApp {
     const generation = this.beginSongLoad();
 
     if (typeof urlOrFile === 'string') {
-      const song = [...PRELOADED_SONGS, ...this.discoveredSongs]
+      const song = [...LIBRARY_BUNDLED_SONGS, ...this.discoveredSongs]
         .find(candidate => candidate.url === urlOrFile) ?? {
         id: urlOrFile,
         title: filenameToTitle(urlOrFile.split('/').pop() ?? urlOrFile),
@@ -176,7 +176,7 @@ export class PianoApp {
         this.discoveredSongs = entries
           .filter(entry => {
             const url = `/songs/${entry.folder}${entry.file}`;
-            return !PRELOADED_SONGS.some(song => song.url === url);
+            return !LIBRARY_BUNDLED_SONGS.some(song => song.url === url);
           })
           .map(entry => ({
             id: `discovered-${entry.folder}${entry.file}`.replace(/[^a-z0-9]/gi, '-').toLowerCase(),
@@ -195,10 +195,10 @@ export class PianoApp {
   }
 
   async loadSongById(id: string): Promise<boolean> {
-    // Check preloaded first
-    const preloaded = PRELOADED_SONGS.find(s => s.id === id);
-    if (preloaded) {
-      return this.loadSong(preloaded.url);
+    // Check bundled first
+    const bundled = LIBRARY_BUNDLED_SONGS.find(s => s.id === id);
+    if (bundled) {
+      return this.loadSong(bundled.url);
     }
     // Check discovered songs (from manifest)
     const discovered = this.discoveredSongs.find(s => s.id === id);
@@ -281,7 +281,7 @@ export class PianoApp {
   }
 
   getSongList(): SongInfo[] {
-    return [...PRELOADED_SONGS, ...this.discoveredSongs, ...this.uploadedSongs];
+    return [...LIBRARY_BUNDLED_SONGS, ...this.discoveredSongs, ...this.uploadedSongs];
   }
 
   getLoadedSong(): SongInfo | null {

@@ -83,10 +83,10 @@ song exclusion check, deployment to `/opt/piano/dist/`, a Cloudflare cache
 purge, and production smoke checks through GitHub Actions.
 
 A private LAN copy at `https://piano.int.everla.st` (Proxmox CT 107) polls
-`main` every minute and rebuilds with `PIANO_INCLUDE_PERSONAL_SONGS=1`, so it
-also serves the personal song library. Push local songs to it with
-`bun run sync:lan-songs`. Its deploy script, systemd units, and nginx configs
-live in `deploy/lan/`.
+`main` every minute and rebuilds with `PIANO_SONG_LIBRARY=personal`, so it lists
+only the personal song library (builds default to `bundled`, the dev server to
+`all`). Push local songs to it with `bun run sync:lan-songs`. Its deploy
+script, systemd units, and nginx configs live in `deploy/lan/`.
 
 ## License
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   midiToNoteName,
   noteNameToMidi,
@@ -187,5 +187,34 @@ describe('filenameToTitle', () => {
 
   it('handles already clean names', () => {
     expect(filenameToTitle('Song.mxl')).toBe('Song');
+  });
+});
+
+describe('LIBRARY_BUNDLED_SONGS', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function loadWithLibrary(library: string | undefined) {
+    vi.resetModules();
+    if (library) vi.stubEnv('PIANO_SONG_LIBRARY', library);
+    return import('../../src/types');
+  }
+
+  it('lists bundled songs by default', async () => {
+    const types = await loadWithLibrary(undefined);
+    expect(types.LIBRARY_BUNDLED_SONGS).toEqual(types.PRELOADED_SONGS);
+  });
+
+  it('lists bundled songs alongside personal ones', async () => {
+    const types = await loadWithLibrary('all');
+    expect(types.LIBRARY_BUNDLED_SONGS).toEqual(types.PRELOADED_SONGS);
+  });
+
+  it('hides bundled songs in the personal-only library', async () => {
+    const types = await loadWithLibrary('personal');
+    expect(types.LIBRARY_BUNDLED_SONGS).toEqual([]);
+    expect(types.PRELOADED_SONGS.length).toBeGreaterThan(0);
   });
 });

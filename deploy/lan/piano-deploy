@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and publish origin/main (plus the personal song library) to /opt/piano/current
+# Build and publish origin/main with only the personal song library to /opt/piano/current
 # whenever either changes. Installed at /usr/local/bin/piano-deploy; run every minute
 # by piano-deploy.timer. Pass --force to rebuild (e.g. after changing this script).
 # Personal songs are synced to $PERSONAL_SONGS by sync-personal-songs on a dev machine.
@@ -38,7 +38,7 @@ if [ -d "$PERSONAL_SONGS" ]; then
   mkdir -p "$SRC/public/songs/personal"
   cp -a "$PERSONAL_SONGS"/. "$SRC/public/songs/personal/"
 fi
-(cd "$SRC" && bun install --frozen-lockfile && PIANO_INCLUDE_PERSONAL_SONGS=1 bun run build)
+(cd "$SRC" && bun install --frozen-lockfile && PIANO_SONG_LIBRARY=personal bun run build)
 
 rm -rf "$RELEASES/$rev" "$RELEASES/.staging"
 cp -a "$SRC/dist" "$RELEASES/.staging"

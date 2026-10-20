@@ -2,22 +2,42 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { SongLibrary } from './src/types';
+
+/**
+ * Which songs the app lists, from PIANO_SONG_LIBRARY:
+ * - bundled: royalty-free songs only (default for builds, incl. production)
+ * - all: bundled + personal (default for the dev server)
+ * - personal: personal songs only (private LAN deploy)
+ */
+const SONG_LIBRARIES: readonly SongLibrary[] = ['bundled', 'all', 'personal'];
+
+function resolveSongLibrary(isProductionBuild: boolean): SongLibrary {
+  const value = process.env.PIANO_SONG_LIBRARY;
+  if (!value) return isProductionBuild ? 'bundled' : 'all';
+  if (!SONG_LIBRARIES.includes(value as SongLibrary)) {
+    throw new Error(`PIANO_SONG_LIBRARY must be one of ${SONG_LIBRARIES.join(', ')}; got "${value}"`);
+  }
+  return value as SongLibrary;
+}
 
 /** Vite plugin that generates a song manifest from public/songs/ at dev/build time */
-function songManifestPlugin(includePersonalSongs: boolean): Plugin {
+function songManifestPlugin(library: SongLibrary): Plugin {
   const generateManifest = () => {
     const songsDir = path.resolve(__dirname, 'public/songs');
     const songs: { file: string; folder: string }[] = [];
 
     // Scan root (royalty-free songs)
-    for (const file of safeReaddir(songsDir)) {
-      if (/\.(mxl|musicxml|xml)$/i.test(file)) {
-        songs.push({ file, folder: '' });
+    if (library !== 'personal') {
+      for (const file of safeReaddir(songsDir)) {
+        if (/\.(mxl|musicxml|xml)$/i.test(file)) {
+          songs.push({ file, folder: '' });
+        }
       }
     }
 
-    // Scan personal/ — dev only (copyrighted, not in git or prod builds)
-    if (includePersonalSongs) {
+    // Scan personal/ (copyrighted, never in git; excluded from builds by default)
+    if (library !== 'bundled') {
       const personalDir = path.join(songsDir, 'personal');
       for (const file of safeReaddir(personalDir)) {
         if (/\.(mxl|musicxml|xml)$/i.test(file)) {
@@ -101,11 +121,10 @@ function safeReaddir(dir: string): string[] {
 export default defineConfig(async ({ command, mode }) => {
   const isProductionBuild = command === 'build';
   const isDevelopmentServer = command === 'serve' && mode !== 'production';
-  // Builds exclude personal songs unless explicitly opted in (private LAN deploy only).
-  const includePersonalSongs = !isProductionBuild || process.env.PIANO_INCLUDE_PERSONAL_SONGS === '1';
+  const songLibrary = resolveSongLibrary(isProductionBuild);
 
   // Only load self-signed SSL plugin in dev (not needed in prod)
-  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin(includePersonalSongs)];
+  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin(songLibrary)];
 
   if (isDevelopmentServer) {
     const { default: basicSsl } = await import('@vitejs/plugin-basic-ssl');
@@ -113,12 +132,15 @@ export default defineConfig(async ({ command, mode }) => {
   }
 
   if (isProductionBuild) {
-    if (!includePersonalSongs) plugins.push(excludePersonalSongsPlugin());
+    if (songLibrary === 'bundled') plugins.push(excludePersonalSongsPlugin());
     plugins.push(serviceWorkerAssetsPlugin());
   }
 
   return {
     plugins,
+    define: {
+      'import.meta.env.PIANO_SONG_LIBRARY': JSON.stringify(songLibrary),
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,
