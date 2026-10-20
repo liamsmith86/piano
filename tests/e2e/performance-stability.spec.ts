@@ -24,6 +24,27 @@ test.describe('Performance and long-session stability', () => {
     expect(await page.locator('.vk-key').count()).toBe(0);
   });
 
+  test('opens desktop scores fitted at the top instead of following analysis to the end', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+    await loadSong(page, '/songs/BeetAnGeSample.mxl');
+
+    const viewport = await page.locator('#score-container').evaluate(element => ({
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      zoom: window.pianoApp.getZoom(),
+    }));
+
+    expect(viewport.zoom).toBe(1);
+    expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
+    expect(viewport.scrollTop).toBe(0);
+    await expect(page.getByRole('slider', { name: 'Score zoom' })).toHaveAttribute(
+      'aria-valuetext',
+      '100 percent',
+    );
+  });
+
   test('survives rapid and repeated song switches without stale renderers', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);

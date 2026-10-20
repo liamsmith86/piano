@@ -5,6 +5,42 @@ async function waitForApp(page: any) {
 }
 
 test.describe('State Reset Between Song Changes', () => {
+  test('library song switching replaces the previous score page instead of leaving a blank spacer', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+
+    await page.locator('[data-song-id="mozart-piano-sonata"]').click();
+    await page.waitForSelector('#score-container svg', { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#score-container svg path').length > 0);
+
+    await page.evaluate(async () => {
+      window.pianoApp.setMode('practice');
+      await window.pianoApp.startPractice();
+      for (const midi of window.pianoApp.getPracticeState().expectedNotes) {
+        window.pianoApp.simulateNoteInput(midi);
+      }
+    });
+
+    await page.locator('.tb-library-btn').click();
+    await expect(page.locator('#library-container')).toBeVisible();
+    await page.locator('[data-song-id="beethoven-an-die-geliebte"]').click();
+    await page.waitForFunction(() => (
+      window.pianoApp.getLoadedSong()?.id === 'beethoven-an-die-geliebte'
+    ));
+
+    const renderedPages = await page.locator('#score-container').evaluate(container => ({
+      wrappers: container.querySelectorAll(':scope > [id^="osmdCanvasPage"]').length,
+      svgs: [...container.querySelectorAll('svg')].map(svg => svg.querySelectorAll('path').length),
+      firstPageOffset: container.querySelector('[id^="osmdCanvasPage"]')!
+        .getBoundingClientRect().top - container.getBoundingClientRect().top,
+    }));
+
+    expect(renderedPages.wrappers).toBe(1);
+    expect(renderedPages.svgs).toHaveLength(1);
+    expect(renderedPages.svgs[0]).toBeGreaterThan(0);
+    expect(renderedPages.firstPageOffset).toBeLessThan(40);
+  });
+
   test('loop is cleared when switching songs', async ({ page }) => {
     await page.goto('/');
     await waitForApp(page);

@@ -3,6 +3,17 @@ import type { HandSelection } from '../types';
 import { ScoreOverlay } from './ScoreOverlay';
 import { buildPracticeStaffMap, getPracticeHand, type PracticeStaffMap } from './PracticePart';
 
+const MOBILE_SCORE_BREAKPOINT = 640;
+const MOBILE_SCORE_ZOOM = 0.75;
+const DEFAULT_SCORE_ZOOM = 1;
+const CURSOR_FOLLOW_THRESHOLD = 0.62;
+const CURSOR_FOLLOW_ANCHOR = 0.28;
+const CURSOR_LINE_END_LOOKAHEAD = 0.68;
+
+export function getDefaultScoreZoom(viewportWidth: number): number {
+  return viewportWidth <= MOBILE_SCORE_BREAKPOINT ? MOBILE_SCORE_ZOOM : DEFAULT_SCORE_ZOOM;
+}
+
 export class ScoreRenderer {
   private osmd: OpenSheetMusicDisplay | null = null;
   private cursor: Cursor | null = null;
@@ -12,7 +23,7 @@ export class ScoreRenderer {
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private overlay: ScoreOverlay;
   private practiceStaffHands: PracticeStaffMap = new Map();
-  private _zoom: number = window.innerWidth <= 640 ? 0.75 : 1.5;
+  private _zoom: number = getDefaultScoreZoom(window.innerWidth);
   private loadQueue: Promise<void> = Promise.resolve();
   private loadGeneration = 0;
   private destroyed = false;
@@ -55,6 +66,7 @@ export class ScoreRenderer {
     this.wrongMarkerTimerId = null;
     if (this.osmd) {
       this.osmd.clear();
+      this.removeOsmdPageElements();
       this.osmd = null;
       this.cursor = null;
     }
@@ -77,12 +89,15 @@ export class ScoreRenderer {
       drawMeasureNumbers: true,
       drawTimeSignatures: true,
       drawMetronomeMarks: true,
-      followCursor: true,
+      // ScoreAnalyzer walks the complete cursor during load and the practice
+      // modes provide container-aware following, so OSMD's page scrolling must
+      // stay disabled here.
+      followCursor: false,
       cursorsOptions: [{
         type: 0,
         color: '#3b82f6',
         alpha: 0.4,
-        follow: true,
+        follow: false,
       }],
     };
 
@@ -101,6 +116,7 @@ export class ScoreRenderer {
       }
     } catch (error) {
       osmd.clear();
+      this.removeOsmdPageElements();
       if (generation !== this.loadGeneration || this.destroyed) return false;
       throw error;
     }
@@ -109,6 +125,7 @@ export class ScoreRenderer {
     // serialized, it is safe to clear this stale instance before the next one starts.
     if (generation !== this.loadGeneration || this.destroyed) {
       osmd.clear();
+      this.removeOsmdPageElements();
       return false;
     }
 
@@ -116,8 +133,11 @@ export class ScoreRenderer {
       osmd.zoom = this._zoom;
       osmd.render();
       this.renderCount++;
+      this.container.scrollTop = 0;
+      this.container.scrollLeft = 0;
     } catch (error) {
       osmd.clear();
+      this.removeOsmdPageElements();
       throw error;
     }
     this.osmd = osmd;
@@ -260,11 +280,23 @@ export class ScoreRenderer {
       const cursorRect = cursorEl.getBoundingClientRect();
 
       const cursorBottom = cursorRect.bottom - containerRect.top;
+      const cursorTop = cursorRect.top - containerRect.top;
+      const cursorRight = cursorRect.right - containerRect.left;
       const visibleHeight = this.container.clientHeight;
+      if (visibleHeight <= 0) return;
 
-      if (cursorBottom > visibleHeight - 40 || cursorRect.top < containerRect.top + 20) {
+      // Move the current system toward the upper third once it crosses about
+      // two-thirds of the viewport. Near the right side, move sooner so the
+      // following system is already visible before the music wraps to it.
+      const lowerBoundary = visibleHeight * CURSOR_FOLLOW_THRESHOLD;
+      const upperBoundary = Math.min(24, visibleHeight * 0.1);
+      const hasMoreBelow = this.container.scrollTop + visibleHeight < this.container.scrollHeight - 1;
+      const nearingLineEnd = hasMoreBelow
+        && this.container.clientWidth > 0
+        && cursorRight > this.container.clientWidth * CURSOR_LINE_END_LOOKAHEAD;
+      if (cursorBottom > lowerBoundary || cursorTop < upperBoundary || nearingLineEnd) {
         const scrollTarget = this.container.scrollTop
-          + cursorRect.top - containerRect.top - visibleHeight / 3;
+          + cursorTop - visibleHeight * CURSOR_FOLLOW_ANCHOR;
         const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
         this.container.scrollTo({
           top: Math.max(0, scrollTarget),
@@ -278,6 +310,17 @@ export class ScoreRenderer {
     if (this.scrollFrame === null) return;
     cancelAnimationFrame(this.scrollFrame);
     this.scrollFrame = null;
+  }
+
+  /**
+   * OSMD.clear() empties its SVG but leaves the page wrapper in the host.
+   * Remove those top-level wrappers so a replacement score cannot render below
+   * an invisible, full-height page from the previous score.
+   */
+  private removeOsmdPageElements(): void {
+    for (const child of Array.from(this.container.children)) {
+      if (child.id.startsWith('osmdCanvasPage')) child.remove();
+    }
   }
 
   /** Reset green played notes back to original colors (for repeat sections) */
@@ -653,6 +696,7 @@ export class ScoreRenderer {
     this.overlay.destroy();
     this.wrongNoteOverlay?.remove();
     this.osmd?.clear();
+    this.removeOsmdPageElements();
     this.osmd = null;
     this.cursor = null;
     this.practiceStaffHands = new Map();
