@@ -3,7 +3,8 @@
 # notices the change and rebuilds within a minute. Never targets production.
 set -euo pipefail
 
-HOST=${PIANO_LAN_HOST:-root@piano.int.everla.st}
+# piano.int.everla.st resolves to the reverse proxy, so target CT 107 directly.
+HOST=${PIANO_LAN_HOST:-root@192.168.50.57}
 SONGS_DIR="$(cd "$(dirname "$0")/../.." && pwd)/public/songs/personal/"
 
 rsync -av --delete --chown=piano:piano --chmod=D755,F644 "$SONGS_DIR" "$HOST:/opt/piano/personal-songs/"
