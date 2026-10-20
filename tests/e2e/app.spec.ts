@@ -344,6 +344,21 @@ test.describe('Song Library UI', () => {
 
     await expect(page.locator('.sl-drop-zone')).toBeVisible();
   });
+
+  test('keeps the most recently opened song first across visits', async ({ page }) => {
+    await page.goto('/');
+    await waitForApp(page);
+
+    const target = await page.evaluate(() => window.pianoApp.getSongList()[1]);
+    expect(target).toBeDefined();
+    await page.evaluate(song => window.pianoApp.loadSong(song.url), target!);
+    await page.waitForSelector('#score-container svg', { timeout: 15000 });
+
+    await page.reload();
+    await waitForApp(page);
+
+    await expect(page.locator('.sl-card').first()).toHaveAttribute('data-song-id', target!.id);
+  });
 });
 
 test.describe('Multiple Songs', () => {

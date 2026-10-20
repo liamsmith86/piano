@@ -11,6 +11,12 @@ export interface PracticeSession {
   completed: boolean; // did they finish the whole piece?
 }
 
+export interface SongPracticeSummary {
+  bestAccuracy: number | null;
+  sessionCount: number;
+  lastPracticedAt: number | null;
+}
+
 const STORAGE_KEY = 'piano-practice-history';
 
 function isFiniteNumber(value: unknown): value is number {
@@ -81,14 +87,31 @@ export function addSession(session: PracticeSession): void {
   }
 }
 
-export function getSessionsForSong(songId: string): PracticeSession[] {
-  return getHistory().filter(s => s.songId === songId);
-}
+/** Build per-song library metadata with a single history read. */
+export function getSongPracticeSummaries(): Map<string, SongPracticeSummary> {
+  const summaries = new Map<string, SongPracticeSummary>();
 
-export function getBestAccuracyForSong(songId: string): number | null {
-  const sessions = getSessionsForSong(songId);
-  if (sessions.length === 0) return null;
-  return Math.max(...sessions.map(s => s.accuracy));
+  for (const session of getHistory()) {
+    const existing = summaries.get(session.songId) ?? {
+      bestAccuracy: null,
+      sessionCount: 0,
+      lastPracticedAt: null,
+    };
+    const practicedAt = Date.parse(session.date);
+
+    existing.bestAccuracy = existing.bestAccuracy === null
+      ? session.accuracy
+      : Math.max(existing.bestAccuracy, session.accuracy);
+    existing.sessionCount++;
+    if (Number.isFinite(practicedAt)) {
+      existing.lastPracticedAt = existing.lastPracticedAt === null
+        ? practicedAt
+        : Math.max(existing.lastPracticedAt, practicedAt);
+    }
+    summaries.set(session.songId, existing);
+  }
+
+  return summaries;
 }
 
 export function getRecentSessions(limit: number = 10): PracticeSession[] {

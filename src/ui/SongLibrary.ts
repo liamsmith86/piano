@@ -1,6 +1,10 @@
 import type { PianoApp } from '../api';
 import type { SongInfo } from '../types';
-import { getBestAccuracyForSong, getSessionsForSong } from '../progress';
+import {
+  getSongPracticeSummaries,
+  type SongPracticeSummary,
+} from '../progress';
+import { getSongActivity, type SongActivity } from '../songActivity';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -95,9 +99,18 @@ export class SongLibrary {
 
     if (generation !== this.renderGeneration) return;
 
-    const allSongs = this.app.getSongList();
+    const practiceSummaries = getSongPracticeSummaries();
+    const allSongs = this.sortSongsByRecentUse(
+      this.app.getSongList(),
+      getSongActivity(),
+      practiceSummaries,
+    );
     for (const song of allSongs) {
-      grid.appendChild(this.createSongCard(song, song.source === 'uploaded'));
+      grid.appendChild(this.createSongCard(
+        song,
+        song.source === 'uploaded',
+        practiceSummaries.get(song.id),
+      ));
     }
 
     wrapper.appendChild(grid);
@@ -141,7 +154,31 @@ export class SongLibrary {
     }
   }
 
-  private createSongCard(song: SongInfo, isUploaded = false): HTMLElement {
+  private sortSongsByRecentUse(
+    songs: SongInfo[],
+    activity: SongActivity,
+    practiceSummaries: Map<string, SongPracticeSummary>,
+  ): SongInfo[] {
+    return songs
+      .map((song, originalIndex) => ({
+        song,
+        originalIndex,
+        lastUsedAt: Math.max(
+          activity.get(song.id) ?? -Infinity,
+          practiceSummaries.get(song.id)?.lastPracticedAt ?? -Infinity,
+        ),
+      }))
+      .sort((left, right) => (
+        right.lastUsedAt - left.lastUsedAt || left.originalIndex - right.originalIndex
+      ))
+      .map(({ song }) => song);
+  }
+
+  private createSongCard(
+    song: SongInfo,
+    isUploaded = false,
+    practiceSummary?: SongPracticeSummary,
+  ): HTMLElement {
     const loadedSong = this.app.getLoadedSong();
     const isActive = loadedSong?.id === song.id;
     const card = document.createElement('button');
@@ -149,9 +186,8 @@ export class SongLibrary {
     card.dataset.songId = song.id;
 
     const iconColor = isUploaded ? '#22c55e' : 'currentColor';
-    const bestAccuracy = getBestAccuracyForSong(song.id);
-    const sessions = getSessionsForSong(song.id);
-    const sessionCount = sessions.length;
+    const bestAccuracy = practiceSummary?.bestAccuracy ?? null;
+    const sessionCount = practiceSummary?.sessionCount ?? 0;
 
     const progressHtml = bestAccuracy !== null
       ? `<div class="sl-card-progress">

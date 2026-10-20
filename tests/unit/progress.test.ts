@@ -20,8 +20,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 import {
   getHistory,
   addSession,
-  getSessionsForSong,
-  getBestAccuracyForSong,
+  getSongPracticeSummaries,
   getRecentSessions,
   getTotalPracticeTime,
   getTotalNotesPlayed,
@@ -67,26 +66,22 @@ describe('Progress Tracking', () => {
     expect(getHistory()).toHaveLength(3);
   });
 
-  it('getSessionsForSong filters correctly', () => {
-    addSession(makeSession({ songId: 'song-a' }));
-    addSession(makeSession({ songId: 'song-b' }));
-    addSession(makeSession({ songId: 'song-a' }));
+  it('summarizes song practice history in one pass', () => {
+    addSession(makeSession({ songId: 'song-a', accuracy: 70, date: '2026-01-01T00:00:00.000Z' }));
+    addSession(makeSession({ songId: 'song-a', accuracy: 95, date: '2026-03-01T00:00:00.000Z' }));
+    addSession(makeSession({ songId: 'song-b', accuracy: 80, date: 'not-a-date' }));
 
-    expect(getSessionsForSong('song-a')).toHaveLength(2);
-    expect(getSessionsForSong('song-b')).toHaveLength(1);
-    expect(getSessionsForSong('song-c')).toHaveLength(0);
-  });
-
-  it('getBestAccuracyForSong returns highest accuracy', () => {
-    addSession(makeSession({ songId: 'song-a', accuracy: 70 }));
-    addSession(makeSession({ songId: 'song-a', accuracy: 95 }));
-    addSession(makeSession({ songId: 'song-a', accuracy: 80 }));
-
-    expect(getBestAccuracyForSong('song-a')).toBe(95);
-  });
-
-  it('getBestAccuracyForSong returns null for no sessions', () => {
-    expect(getBestAccuracyForSong('unknown')).toBeNull();
+    expect(getSongPracticeSummaries().get('song-a')).toEqual({
+      bestAccuracy: 95,
+      sessionCount: 2,
+      lastPracticedAt: Date.parse('2026-03-01T00:00:00.000Z'),
+    });
+    expect(getSongPracticeSummaries().get('song-b')).toEqual({
+      bestAccuracy: 80,
+      sessionCount: 1,
+      lastPracticedAt: null,
+    });
+    expect(getSongPracticeSummaries().has('unknown')).toBe(false);
   });
 
   it('getRecentSessions returns most recent first', () => {

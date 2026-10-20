@@ -9,6 +9,7 @@ import { ShortcutsHelp } from './ui/ShortcutsHelp';
 import { AppStatus } from './ui/AppStatus';
 import type { AppSettings } from './ui/Settings';
 import { addSession } from './progress';
+import { recordSongActivity } from './songActivity';
 import { createBrowserUsageAnalytics } from './analytics';
 import './style.css';
 
@@ -288,7 +289,10 @@ async function main(): Promise<void> {
     applySettings(settingsPanel.getSettings());
 
     const song = app.getLoadedSong();
-    if (song) analytics.trackScoreLoaded(song);
+    if (song) {
+      recordSongActivity(song.id);
+      analytics.trackScoreLoaded(song);
+    }
   });
 
   // Browser back button: return to library from score view
