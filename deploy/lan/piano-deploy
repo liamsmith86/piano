@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Build and publish origin/main (plus the personal song library) to /opt/piano/current
+# whenever either changes. Installed at /usr/local/bin/piano-deploy; run every minute
+# by piano-deploy.timer. Pass --force to rebuild (e.g. after changing this script).
+# Personal songs are synced to $PERSONAL_SONGS by sync-personal-songs on a dev machine.
+set -euo pipefail
+
+REPO_URL=https://github.com/liamsmith86/piano.git
+BRANCH=main
+ROOT=/opt/piano
+SRC="$ROOT/src"
+RELEASES="$ROOT/releases"
+CURRENT="$ROOT/current"
+PERSONAL_SONGS="$ROOT/personal-songs"
+FAILED_REV="$ROOT/.failed-rev"
+KEEP_RELEASES=3
+
+exec 9>"$ROOT/.deploy.lock"
+flock -n 9 || exit 0
+
+[ -d "$SRC/.git" ] || git clone --quiet --branch "$BRANCH" "$REPO_URL" "$SRC"
+git -C "$SRC" fetch --quiet origin "$BRANCH"
+commit=$(git -C "$SRC" rev-parse FETCH_HEAD)
+songs_hash=$( (cd "$PERSONAL_SONGS" 2>/dev/null && find . -type f -printf '%P %s %T@\n' | sort) | sha256sum | cut -c1-12)
+rev="$commit-$songs_hash"
+
+if [ "${1:-}" != --force ]; then
+  [ "$(readlink -f "$CURRENT" 2>/dev/null)" = "$RELEASES/$rev" ] && exit 0
+  # Don't rebuild a broken build every minute; wait for the next push or song sync.
+  [ "$(cat "$FAILED_REV" 2>/dev/null)" = "$rev" ] && exit 0
+fi
+
+echo "Deploying $rev"
+echo "$rev" > "$FAILED_REV"
+git -C "$SRC" reset --quiet --hard "$commit"
+git -C "$SRC" clean --quiet -fdx -e node_modules
+if [ -d "$PERSONAL_SONGS" ]; then
+  mkdir -p "$SRC/public/songs/personal"
+  cp -a "$PERSONAL_SONGS"/. "$SRC/public/songs/personal/"
+fi
+(cd "$SRC" && bun install && PIANO_INCLUDE_PERSONAL_SONGS=1 bun run build)
+
+rm -rf "$RELEASES/$rev" "$RELEASES/.staging"
+cp -a "$SRC/dist" "$RELEASES/.staging"
+mv -T "$RELEASES/.staging" "$RELEASES/$rev"
+ln -sfn "$RELEASES/$rev" "$ROOT/.current.tmp"
+mv -T "$ROOT/.current.tmp" "$CURRENT"
+rm -f "$FAILED_REV"
+
+# Prune old releases; the one just published is always the newest.
+ls -1dt "$RELEASES"/*/ | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf
+echo "Deployed $rev"

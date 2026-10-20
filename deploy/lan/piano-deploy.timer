@@ -1,0 +1,9 @@
+[Unit]
+Description=Poll GitHub main for piano app deploys
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=1min
+
+[Install]
+WantedBy=timers.target

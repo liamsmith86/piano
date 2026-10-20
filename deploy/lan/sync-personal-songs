@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Push the local personal song library to the LAN piano CT. Its deploy timer
+# notices the change and rebuilds within a minute. Never targets production.
+set -euo pipefail
+
+HOST=${PIANO_LAN_HOST:-root@piano.int.everla.st}
+SONGS_DIR="$(cd "$(dirname "$0")/../.." && pwd)/public/songs/personal/"
+
+rsync -av --delete --chown=piano:piano --chmod=D755,F644 "$SONGS_DIR" "$HOST:/opt/piano/personal-songs/"

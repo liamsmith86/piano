@@ -101,9 +101,11 @@ function safeReaddir(dir: string): string[] {
 export default defineConfig(async ({ command, mode }) => {
   const isProductionBuild = command === 'build';
   const isDevelopmentServer = command === 'serve' && mode !== 'production';
+  // Builds exclude personal songs unless explicitly opted in (private LAN deploy only).
+  const includePersonalSongs = !isProductionBuild || process.env.PIANO_INCLUDE_PERSONAL_SONGS === '1';
 
   // Only load self-signed SSL plugin in dev (not needed in prod)
-  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin(!isProductionBuild)];
+  const plugins: Plugin[] = [tailwindcss(), songManifestPlugin(includePersonalSongs)];
 
   if (isDevelopmentServer) {
     const { default: basicSsl } = await import('@vitejs/plugin-basic-ssl');
@@ -111,7 +113,7 @@ export default defineConfig(async ({ command, mode }) => {
   }
 
   if (isProductionBuild) {
-    plugins.push(excludePersonalSongsPlugin());
+    if (!includePersonalSongs) plugins.push(excludePersonalSongsPlugin());
     plugins.push(serviceWorkerAssetsPlugin());
   }
 
