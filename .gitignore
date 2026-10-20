@@ -29,9 +29,6 @@ playwright-report/
 blob-report/
 coverage/
 
-# Bun
-bun.lock
-
 # Personal (copyrighted) song collection
 public/songs/personal/
 

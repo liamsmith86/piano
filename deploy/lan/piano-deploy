@@ -38,7 +38,7 @@ if [ -d "$PERSONAL_SONGS" ]; then
   mkdir -p "$SRC/public/songs/personal"
   cp -a "$PERSONAL_SONGS"/. "$SRC/public/songs/personal/"
 fi
-(cd "$SRC" && bun install && PIANO_INCLUDE_PERSONAL_SONGS=1 bun run build)
+(cd "$SRC" && bun install --frozen-lockfile && PIANO_INCLUDE_PERSONAL_SONGS=1 bun run build)
 
 rm -rf "$RELEASES/$rev" "$RELEASES/.staging"
 cp -a "$SRC/dist" "$RELEASES/.staging"
